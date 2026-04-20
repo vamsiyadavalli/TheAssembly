@@ -3,8 +3,8 @@
 TheAssembly is a privacy-first fitness whiteboard built for Streamlit Community Cloud.
 
 ## What it does
-- **Athlete view:** shows only the current workout window - tomorrow during the 8:00 PM preview or today during the overnight session.
-- **Self-wipe:** shows a high-contrast `Garage Closed` state from 9:01 AM through 7:59 PM in `America/New_York`.
+- **Athlete view:** shows only the current workout window - tomorrow during the 12:00 PM preview or today during the overnight session.
+- **Self-wipe:** shows a high-contrast `Garage Closed` state from 9:01 AM through 11:59 AM in `America/New_York`.
 - **Organizer view:** unlocks from the sidebar with a shared admin password and can search history or stage future workouts.
 - **Secret bridge:** reads `workouts.json` and `current_state.json` from the private `TheAssemblyData` GitHub repository using `requests` plus a GitHub Personal Access Token.
 
@@ -125,10 +125,10 @@ Athletes only see today's workout when:
 - `current_state.json` is `open`
 
 Athletes can preview tomorrow's workout when:
-- the current local time in `America/New_York` is between `8:00 PM` and `11:59 PM`
+- the current local time in `America/New_York` is between `12:00 PM` and `11:59 PM`
 - `current_state.json` is `open`
 
-From `9:01 AM` through `7:59 PM`, the athlete view always shows **Garage Closed**.
+From `9:01 AM` through `11:59 AM`, the athlete view always shows **Garage Closed**.
 
 Organizer staging saves the new workout and resets `current_state.json` back to `open`.
 
