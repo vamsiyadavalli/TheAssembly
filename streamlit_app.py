@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
-import hmac
 from pathlib import Path
+from typing import Literal
+import hmac
+import os
+import re
 
 import pytz
 import streamlit as st
 
-from theassembly.config import load_config
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
 from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
-from theassembly.schedule import APP_TIMEZONE_NAME, AthleteSlate, resolve_athlete_slate
+from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 
 
 st.set_page_config(
@@ -75,15 +78,98 @@ CUSTOM_CSS = """
 """
 
 
-def _app_config():
-    try:
-        secrets = dict(st.secrets)
-    except Exception:
-        secrets = {}
-    return load_config(secrets)
+AppRole = Literal["athlete", "admin"]
 
 
-def _build_repository(config) -> GitHubDataRepository | None:
+@dataclass
+class AppConfig:
+    github_enabled: bool
+    github_token: str | None
+    workouts_repo_owner: str
+    workouts_repo_name: str
+    workouts_repo_branch: str
+    workouts_file_path: str
+    current_state_file_path: str
+    app_timezone: str
+    app_role: AppRole
+    admin_password: str | None
+    admin_enabled: bool
+
+
+def _secret_or_env(key: str, default: str | None = None) -> str | None:
+    if key in st.secrets:
+        value = st.secrets.get(key)
+        return str(value) if value is not None else default
+    return os.getenv(key, default)
+
+
+def _normalize_token(raw_value: str | None) -> str | None:
+    if raw_value is None:
+        return None
+
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    if value.startswith("github_pat_") or value.startswith("ghp_"):
+        return value
+
+    # Guard against accidental labels like "read write: github_pat_..." pasted in secrets.
+    match = re.search(r"(github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9]+)", value)
+    if match:
+        return match.group(1)
+
+    return value
+
+
+def _token_for_role(app_role: AppRole) -> str | None:
+    if app_role == "admin":
+        return _normalize_token(_secret_or_env("GITHUB_WRITE_TOKEN") or _secret_or_env("GITHUB_TOKEN"))
+    return _normalize_token(_secret_or_env("GITHUB_READ_TOKEN") or _secret_or_env("GITHUB_TOKEN"))
+
+
+def _friendly_bridge_error(raw_error: str, config: AppConfig) -> str:
+    if "GitHub API request failed (401)" in raw_error:
+        return (
+            "GitHub authentication failed (401). Check that your token is valid and not expired, "
+            "and that GITHUB_WRITE_TOKEN is set correctly for admin mode."
+        )
+
+    if "GitHub API request failed (404)" in raw_error:
+        return (
+            "GitHub data was not found (404). Verify repo access and settings: "
+            f"owner={config.workouts_repo_owner}, repo={config.workouts_repo_name}, "
+            f"branch={config.workouts_repo_branch}, workouts_path={config.workouts_file_path}, "
+            f"state_path={config.current_state_file_path}. A PAT without repo access can also surface as 404."
+        )
+
+    return raw_error
+
+
+def _app_config(app_role: AppRole = "athlete") -> AppConfig:
+    github_token = _token_for_role(app_role)
+    owner = _secret_or_env("WORKOUTS_REPO_OWNER", "") or ""
+    repo = _secret_or_env("WORKOUTS_REPO_NAME", "") or ""
+    admin_password = _secret_or_env("ADMIN_PASSWORD")
+
+    github_enabled = bool(github_token and owner and repo)
+
+    return AppConfig(
+        github_enabled=github_enabled,
+        github_token=github_token,
+        workouts_repo_owner=owner,
+        workouts_repo_name=repo,
+        workouts_repo_branch=_secret_or_env("WORKOUTS_REPO_BRANCH", "main") or "main",
+        workouts_file_path=_secret_or_env("WORKOUTS_FILE_PATH", "workouts.json") or "workouts.json",
+        current_state_file_path=_secret_or_env("CURRENT_STATE_FILE_PATH", "current_state.json") or "current_state.json",
+        app_timezone=_secret_or_env("APP_TIMEZONE", "America/New_York") or "America/New_York",
+        app_role=app_role,
+        admin_password=admin_password,
+        admin_enabled=bool(admin_password),
+    )
+
+
+def _build_repository(config: AppConfig) -> GitHubDataRepository | None:
     if not config.github_enabled:
         return None
 
@@ -98,7 +184,7 @@ def _build_repository(config) -> GitHubDataRepository | None:
     return GitHubDataRepository(repo_config)
 
 
-def _load_data(config) -> tuple[list[WorkoutRecord], CurrentState, str | None]:
+def _load_data(config: AppConfig) -> tuple[list[WorkoutRecord], CurrentState, str | None]:
     repository = _build_repository(config)
     if repository is None:
         # Local dev fallback: use sibling TheAssemblyData repo when secrets are not configured.
@@ -126,7 +212,7 @@ def _load_data(config) -> tuple[list[WorkoutRecord], CurrentState, str | None]:
         records, _ = repository.fetch_workouts()
         current_state, _ = repository.fetch_current_state()
     except RuntimeError as exc:
-        return [], CurrentState(status="closed"), str(exc)
+        return [], CurrentState(status="closed"), _friendly_bridge_error(str(exc), config)
 
     return records, current_state, None
 
@@ -178,7 +264,7 @@ def _render_athlete_view(slate: AthleteSlate) -> None:
         st.caption(f"Next scheduled release: {slate.next_release_label}")
 
 
-def _authenticate_admin(config) -> bool:
+def _authenticate_admin(config: AppConfig) -> bool:
     st.sidebar.markdown("## Organizer")
     if not config.admin_enabled:
         st.sidebar.info("Set `ADMIN_PASSWORD` to unlock organizer tools.")
@@ -232,7 +318,7 @@ def _render_record_list(records: list[WorkoutRecord], heading: str, query: str) 
 
 
 def _render_admin_console(
-    config,
+    config: AppConfig,
     records: list[WorkoutRecord],
     current_state: CurrentState,
     now_et: datetime,
@@ -290,55 +376,32 @@ def _render_admin_console(
             st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
 
 
-def main() -> None:
-    config = _app_config()
-    admin_enabled = _authenticate_admin(config)
+def _require_admin_write_access(config: AppConfig) -> None:
+    if config.app_role != "admin":
+        return
+    has_write_token = bool(_secret_or_env("GITHUB_WRITE_TOKEN") or _secret_or_env("GITHUB_TOKEN"))
+    if not has_write_token:
+        st.error("Admin app is missing GITHUB_WRITE_TOKEN. Writes are disabled.")
+        st.stop()
+
+
+def main(app_role: AppRole = "athlete") -> None:
+    config = _app_config(app_role)
+    _require_admin_write_access(config)
+
     records, current_state, error_message = _load_data(config)
-    now = datetime.now(pytz.timezone(APP_TIMEZONE_NAME))
-
-    # Debug: Show bridge/config status and fetch errors.
-    st.info(
-        "[DEBUG] Bridge config: "
-        f"github_enabled={config.github_enabled}, "
-        f"owner={config.workouts_repo_owner or '(missing)'}, "
-        f"repo={config.workouts_repo_name or '(missing)'}, "
-        f"branch={config.workouts_repo_branch}, "
-        f"workouts_path={config.workouts_file_path}, "
-        f"state_path={config.current_state_file_path}, "
-        f"timezone={config.timezone_name}"
-    )
-    if error_message:
-        st.error(f"[DEBUG] Data bridge error: {error_message}")
-
-    # Debug: Show loaded workout records
-    debug_records = []
-    for r in records:
-        debug_records.append({
-            'date': getattr(r, 'date', None),
-            'workout_date': getattr(r, 'workout_date', None),
-            'release_time': getattr(r, 'release_time', None),
-            'status': getattr(r, 'status', None),
-            'keys': list(r.__dict__.keys()) if hasattr(r, '__dict__') else str(type(r))
-        })
-    st.info(f"[DEBUG] Loaded records: {debug_records}")
-
-    # Debug: Show current time, logic window, and target date
-    from theassembly.schedule import detect_logic_window
-    logic_window, target_date, is_preview = detect_logic_window(now)
-    st.info(f"[DEBUG] Now (ET): {now.strftime('%Y-%m-%d %I:%M:%S %p %Z')}, Logic window: {logic_window}, Target date: {target_date}, Is preview: {is_preview}")
-
-    slate = resolve_athlete_slate(records, current_state, now, config.timezone_name)
+    now = datetime.now(pytz.timezone(config.app_timezone))
+    slate = resolve_athlete_slate(records, current_state, now, config.app_timezone)
     _render_athlete_view(slate)
 
     if error_message:
-        if admin_enabled:
-            st.warning(error_message)
-        else:
-            st.caption("Organizer configuration is still in progress.")
+        st.warning(error_message) if config.app_role == "admin" else st.caption("Organizer configuration is still in progress.")
 
-    if admin_enabled:
+    admin_enabled = _authenticate_admin(config) if config.app_role == "admin" else False
+    if config.app_role == "admin" and admin_enabled:
         _render_admin_console(config, records, current_state, now, slate)
 
 
 if __name__ == "__main__":
-    main()
+    # Default local behavior keeps current user-facing app as athlete portal.
+    main(app_role="athlete")
