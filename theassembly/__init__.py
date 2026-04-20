@@ -1,0 +1,2 @@
+"""TheAssembly application package."""
+
