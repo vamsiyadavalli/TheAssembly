@@ -104,6 +104,44 @@ class AthleteSlateTests(unittest.TestCase):
         self.assertEqual("Mon Apr 20 at 12:00 PM", slate.next_release_label)
         self.assertEqual("closed", slate.logic_window)
 
+    def test_preview_window_remains_closed_at_1159_59_am_et(self) -> None:
+        slate = resolve_athlete_slate(
+            [self.today_record, self.tomorrow_record],
+            self.current_state,
+            datetime(2026, 4, 20, 15, 59, 59, tzinfo=timezone.utc),
+            "America/New_York",
+        )
+
+        self.assertEqual("closed", slate.status)
+        self.assertFalse(slate.is_preview)
+        self.assertEqual("closed", slate.logic_window)
+
+    def test_preview_window_opens_at_exactly_1200_pm_et(self) -> None:
+        slate = resolve_athlete_slate(
+            [self.today_record, self.tomorrow_record],
+            self.current_state,
+            datetime(2026, 4, 20, 16, 0, 0, tzinfo=timezone.utc),
+            "America/New_York",
+        )
+
+        self.assertEqual("open", slate.status)
+        self.assertTrue(slate.is_preview)
+        self.assertEqual("Tomorrow's Workout", slate.heading)
+        self.assertEqual("2026-04-21", slate.workout.date if slate.workout else None)
+        self.assertEqual("preview", slate.logic_window)
+
+    def test_preview_window_stays_open_at_1200_01_pm_et(self) -> None:
+        slate = resolve_athlete_slate(
+            [self.today_record, self.tomorrow_record],
+            self.current_state,
+            datetime(2026, 4, 20, 16, 0, 1, tzinfo=timezone.utc),
+            "America/New_York",
+        )
+
+        self.assertEqual("open", slate.status)
+        self.assertTrue(slate.is_preview)
+        self.assertEqual("preview", slate.logic_window)
+
     def test_preview_window_reports_missing_tomorrow_workout(self) -> None:
         slate = resolve_athlete_slate(
             [self.today_record],

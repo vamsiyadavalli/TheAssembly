@@ -153,6 +153,11 @@ CI workflow:
 - `.github/workflows/tests.yml` runs on push and pull requests for `dev` and `master`.
 - It runs unit tests and a non-blocking Ruff lint step.
 
+Monitoring workflow:
+- `.github/workflows/workout-monitoring.yml` runs on cron and manual dispatch.
+- It validates data in `TheAssemblyData`, checks for missing workouts, and emits warning/critical status.
+- Alerts are handled via GitHub Actions run status, step summary output, and native GitHub failure emails.
+
 Suggested repository protection rules:
 1. Require pull requests to merge into `master`.
 2. Require CI checks to pass before merge.
@@ -192,6 +197,24 @@ Suggested repository protection rules:
 1. Rotate `GITHUB_READ_TOKEN` and `GITHUB_WRITE_TOKEN` on a regular cadence.
 2. Rotate `ADMIN_PASSWORD` periodically.
 3. Never commit live secrets into git.
+
+### Monitoring secrets
+Configure these repository secrets for `.github/workflows/workout-monitoring.yml`:
+
+Minimal setup (no Slack, no SMTP):
+- Use `.github/monitoring-secrets.env.example` as your copy/paste template.
+- Add only those keys in GitHub repository secrets.
+- Skip `SLACK_WEBHOOK_URL` and all `MAIL_*` secrets if you only want GitHub Actions summaries + native GitHub failure emails.
+
+- Required:
+  - `MONITOR_GITHUB_TOKEN` (PAT with read access to `TheAssemblyData`)
+  - `WORKOUTS_REPO_OWNER`
+  - `WORKOUTS_REPO_NAME`
+- Optional overrides:
+  - `WORKOUTS_REPO_BRANCH` (defaults to `master`)
+  - `WORKOUTS_FILE_PATH` (defaults to `workouts.json`)
+  - `CURRENT_STATE_FILE_PATH` (defaults to `current_state.json`)
+  - `APP_TIMEZONE` (defaults to `America/New_York`)
 
 ### Release checklist
 1. Update data in `TheAssemblyData` and commit.
