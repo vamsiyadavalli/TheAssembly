@@ -157,6 +157,7 @@ Monitoring workflow:
 - `.github/workflows/workout-monitoring.yml` runs on cron and manual dispatch.
 - It validates data in `TheAssemblyData`, checks for missing workouts, and emits warning/critical status.
 - Alerts are handled via GitHub Actions run status, step summary output, and native GitHub failure emails.
+- Legacy `.github/workflows/daily-workout-status.yml` was retired to avoid duplicate scheduled checks.
 
 Suggested repository protection rules:
 1. Require pull requests to merge into `master`.
