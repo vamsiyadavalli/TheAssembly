@@ -1,7 +1,7 @@
 import unittest
 
 from theassembly.github_repo import build_text_update_payload, build_update_payload
-from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
+from theassembly.models import WorkoutRecord, load_current_state, load_workouts
 
 
 class WorkoutModelTests(unittest.TestCase):

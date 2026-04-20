@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-import json
 from typing import Any
 from urllib.parse import quote
 

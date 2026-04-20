@@ -142,6 +142,22 @@ streamlit run streamlit_app.py
 python3 -m unittest discover -s tests
 ```
 
+## Branch Strategy and CI
+
+Recommended lightweight flow:
+1. `feature/*` branches target `dev`.
+2. `dev` is your integration branch.
+3. `master` is production and Streamlit deployment source.
+
+CI workflow:
+- `.github/workflows/tests.yml` runs on push and pull requests for `dev` and `master`.
+- It runs unit tests and a non-blocking Ruff lint step.
+
+Suggested repository protection rules:
+1. Require pull requests to merge into `master`.
+2. Require CI checks to pass before merge.
+3. Prefer squash merges to keep history clean.
+
 ## Post-Launch Operations
 
 ### Daily smoke test (2-3 minutes)
