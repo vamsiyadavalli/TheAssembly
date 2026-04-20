@@ -21,7 +21,7 @@ Set these in Streamlit Community Cloud or as environment variables:
 | `WORKOUTS_REPO_NAME` | Yes | Repo name for the private workouts repo, typically `TheAssemblyData` |
 | `WORKOUTS_FILE_PATH` | No | Path to the JSON file, defaults to `workouts.json` |
 | `CURRENT_STATE_FILE_PATH` | No | Path to the state file, defaults to `current_state.json` |
-| `WORKOUTS_REPO_BRANCH` | No | Branch name, defaults to `main` |
+| `WORKOUTS_REPO_BRANCH` | No | Branch name, defaults to `main` (set to your actual data repo branch, e.g. `master`) |
 | `ADMIN_PASSWORD` | Yes | Shared password for the organizer sidebar |
 | `APP_TIMEZONE` | No | Defaults to `America/New_York` |
 
@@ -38,7 +38,7 @@ Set these in Streamlit Community Cloud or as environment variables:
 
 ### Local setup (step-by-step)
 1. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`.
-2. Fill in at least `GITHUB_TOKEN`, `WORKOUTS_REPO_OWNER`, and `WORKOUTS_REPO_NAME`.
+2. Fill in either split tokens (`GITHUB_READ_TOKEN` + `GITHUB_WRITE_TOKEN`) or a single fallback `GITHUB_TOKEN`, plus repo settings.
 3. Restart Streamlit.
 
 
@@ -51,7 +51,7 @@ WORKOUTS_REPO_OWNER = "your-github-owner"
 WORKOUTS_REPO_NAME = "TheAssemblyData"
 WORKOUTS_FILE_PATH = "workouts.json"
 CURRENT_STATE_FILE_PATH = "current_state.json"
-WORKOUTS_REPO_BRANCH = "main"
+WORKOUTS_REPO_BRANCH = "master"
 APP_TIMEZONE = "America/New_York"
 
 # For admin app (read/write)
@@ -60,7 +60,7 @@ WORKOUTS_REPO_OWNER = "your-github-owner"
 WORKOUTS_REPO_NAME = "TheAssemblyData"
 WORKOUTS_FILE_PATH = "workouts.json"
 CURRENT_STATE_FILE_PATH = "current_state.json"
-WORKOUTS_REPO_BRANCH = "main"
+WORKOUTS_REPO_BRANCH = "master"
 APP_TIMEZONE = "America/New_York"
 ADMIN_PASSWORD = "your-admin-password"
 ```
