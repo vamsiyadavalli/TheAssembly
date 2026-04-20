@@ -141,3 +141,44 @@ streamlit run streamlit_app.py
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+## Post-Launch Operations
+
+### Daily smoke test (2-3 minutes)
+1. Open athlete app URL.
+2. Confirm app loads and shows expected slate state for current ET window.
+3. Open admin app URL and unlock organizer tools.
+4. Confirm Organizer Console appears.
+5. Stage a small test workout only when you intend to validate write flow.
+
+### Weekly maintenance
+1. Confirm both app secrets are still present in Streamlit Cloud.
+2. Verify `WORKOUTS_REPO_BRANCH`, owner, repo, and file paths still match `TheAssemblyData`.
+3. Check recent commits in `TheAssemblyData` for expected updates only.
+
+### Incident response quick guide
+
+- `401 Bad credentials`
+  - Re-check token format in Streamlit secrets (raw token only).
+  - Verify PAT has not expired/revoked.
+  - Confirm admin uses write token and athlete uses read token.
+
+- `404 Not Found`
+  - Verify `WORKOUTS_REPO_OWNER`, `WORKOUTS_REPO_NAME`, `WORKOUTS_REPO_BRANCH`, and file paths.
+  - Verify PAT has repository access to `TheAssemblyData`.
+
+- Athlete shows `Garage Closed` unexpectedly
+  - Confirm app local time is ET and current window is open or preview.
+  - Verify `current_state.json` status is `open`.
+  - Verify a workout exists for the expected target date.
+
+### Security hygiene
+1. Rotate `GITHUB_READ_TOKEN` and `GITHUB_WRITE_TOKEN` on a regular cadence.
+2. Rotate `ADMIN_PASSWORD` periodically.
+3. Never commit live secrets into git.
+
+### Release checklist
+1. Update data in `TheAssemblyData` and commit.
+2. Validate JSON shape (`workouts.json`, `current_state.json`).
+3. Confirm athlete/admin behavior on deployed URLs after push.
+4. If needed, use Streamlit reboot to force fresh secret/config load.
