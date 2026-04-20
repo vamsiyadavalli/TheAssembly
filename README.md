@@ -156,7 +156,7 @@ CI workflow:
 Monitoring workflow:
 - `.github/workflows/workout-monitoring.yml` runs on cron and manual dispatch.
 - It validates data in `TheAssemblyData`, checks for missing workouts, and emits warning/critical status.
-- Warning/critical runs can notify Slack and SMTP email when secrets are configured.
+- Alerts are handled via GitHub Actions run status, step summary output, and native GitHub failure emails.
 
 Suggested repository protection rules:
 1. Require pull requests to merge into `master`.
@@ -215,15 +215,6 @@ Minimal setup (no Slack, no SMTP):
   - `WORKOUTS_FILE_PATH` (defaults to `workouts.json`)
   - `CURRENT_STATE_FILE_PATH` (defaults to `current_state.json`)
   - `APP_TIMEZONE` (defaults to `America/New_York`)
-- Optional Slack alerts:
-  - `SLACK_WEBHOOK_URL`
-- Optional SMTP email alerts:
-  - `MAIL_HOST`
-  - `MAIL_PORT`
-  - `MAIL_USERNAME`
-  - `MAIL_PASSWORD`
-  - `MAIL_FROM`
-  - `NOTIFICATION_EMAIL`
 
 ### Release checklist
 1. Update data in `TheAssemblyData` and commit.
