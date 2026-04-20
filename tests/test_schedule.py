@@ -27,7 +27,7 @@ class AthleteSlateTests(unittest.TestCase):
             }
         )
 
-    def test_preview_window_shows_tomorrows_workout_after_eight_pm(self) -> None:
+    def test_preview_window_shows_tomorrows_workout_after_noon(self) -> None:
         slate = resolve_athlete_slate(
             [self.today_record, self.tomorrow_record],
             self.current_state,
@@ -100,8 +100,8 @@ class AthleteSlateTests(unittest.TestCase):
         )
 
         self.assertEqual("closed", slate.status)
-        self.assertEqual("The slate is closed for the day. Check back at 8:00 PM ET.", slate.message)
-        self.assertEqual("Mon Apr 20 at 8:00 PM", slate.next_release_label)
+        self.assertEqual("The slate is closed for the day. Check back at 12:00 PM ET.", slate.message)
+        self.assertEqual("Mon Apr 20 at 12:00 PM", slate.next_release_label)
         self.assertEqual("closed", slate.logic_window)
 
     def test_preview_window_reports_missing_tomorrow_workout(self) -> None:

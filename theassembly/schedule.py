@@ -9,7 +9,7 @@ from theassembly.models import CurrentState, WorkoutRecord
 
 APP_TIMEZONE_NAME = "America/New_York"
 APP_TIMEZONE = pytz.timezone(APP_TIMEZONE_NAME)
-PREVIEW_START_TIME = time(hour=20, minute=0)
+PREVIEW_START_TIME = time(hour=12, minute=0)
 DAYTIME_CLOSE_START = time(hour=9, minute=1)
 
 
@@ -106,7 +106,7 @@ def resolve_athlete_slate(
         return AthleteSlate(
             status="closed",
             heading="Garage Closed",
-            message="The slate is closed for the day. Check back at 8:00 PM ET.",
+            message="The slate is closed for the day. Check back at 12:00 PM ET.",
             next_release_label=next_release_label,
             logic_window=logic_window,
         )
