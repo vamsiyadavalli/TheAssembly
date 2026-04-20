@@ -201,6 +201,11 @@ Suggested repository protection rules:
 ### Monitoring secrets
 Configure these repository secrets for `.github/workflows/workout-monitoring.yml`:
 
+Minimal setup (no Slack, no SMTP):
+- Use `.github/monitoring-secrets.env.example` as your copy/paste template.
+- Add only those keys in GitHub repository secrets.
+- Skip `SLACK_WEBHOOK_URL` and all `MAIL_*` secrets if you only want GitHub Actions summaries + native GitHub failure emails.
+
 - Required:
   - `MONITOR_GITHUB_TOKEN` (PAT with read access to `TheAssemblyData`)
   - `WORKOUTS_REPO_OWNER`
