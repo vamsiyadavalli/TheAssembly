@@ -1,0 +1,22 @@
+services:
+  athlete:
+    build: .
+    ports:
+      - "8501:8501"
+    command: >
+      python -m streamlit run athlete_app.py
+      --server.address=0.0.0.0
+      --server.port=8501
+    env_file:
+      - docker-compose.override.env
+
+  admin:
+    build: .
+    ports:
+      - "8502:8501"
+    command: >
+      python -m streamlit run admin_app.py
+      --server.address=0.0.0.0
+      --server.port=8501
+    env_file:
+      - docker-compose.override.env
