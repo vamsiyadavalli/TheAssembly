@@ -2,6 +2,66 @@
 
 TheAssembly is a privacy-first fitness whiteboard built for Streamlit Community Cloud.
 
+## Architecture
+
+```mermaid
+graph TD
+    subgraph StreamlitCloud["☁️ Streamlit Community Cloud"]
+        AthleteApp["athlete_app.py\nAthlete Portal"]
+        AdminApp["admin_app.py\nOrganizer Portal"]
+    end
+
+    subgraph TheAssembly["📦 TheAssembly — Application Code"]
+        StreamlitApp["streamlit_app.py\nmain() · _render_athlete_view()\n_render_admin_console() · _authenticate_admin()"]
+        subgraph Package["theassembly/"]
+            Config["config.py\nAppConfig · load_config()"]
+            Models["models.py\nWorkoutRecord · CurrentState\nload_workouts() · serialize_workouts()"]
+            GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()"]
+            Schedule["schedule.py\nAthleteSlate · resolve_athlete_slate()\ndetect_logic_window()"]
+        end
+    end
+
+    subgraph TheAssemblyData["🔒 TheAssemblyData (Private GitHub Repo)"]
+        WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
+        StateJSON["current_state.json\n{ status: open | closed }"]
+    end
+
+    subgraph GitHubAPI["🐙 GitHub REST API"]
+        ContentsAPI["GET /repos/:owner/:repo/contents/:path\nPUT /repos/:owner/:repo/contents/:path"]
+    end
+
+    subgraph Secrets["🔑 Secrets / Environment"]
+        Tokens["GITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nGITHUB_TOKEN (fallback)"]
+        RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
+        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE"]
+    end
+
+    subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
+        Overnight["Overnight\n12:00 AM – 9:00 AM\n→ Show today's workout"]
+        Closed["Daytime Closed\n9:01 AM – 3:59 PM\n→ Garage Closed"]
+        Preview["Preview\n4:00 PM – 11:59 PM\n→ Show tomorrow's workout"]
+    end
+
+    subgraph CI["🔄 GitHub Actions"]
+        TestsWF[".github/workflows/tests.yml\nunit tests + ruff lint\non push/PR to dev and master"]
+        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates TheAssemblyData\ncron + manual dispatch"]
+    end
+
+    AthleteApp -->|"app_role=athlete"| StreamlitApp
+    AdminApp -->|"app_role=admin"| StreamlitApp
+    StreamlitApp --> Config
+    StreamlitApp --> Models
+    StreamlitApp --> GHRepo
+    StreamlitApp --> Schedule
+    GHRepo -->|"HTTP GET/PUT + Bearer token"| ContentsAPI
+    ContentsAPI --> WorkoutsJSON
+    ContentsAPI --> StateJSON
+    Secrets --> Config
+    Secrets --> StreamlitApp
+    Schedule --> TimeLogic
+    CI -->|"reads"| TheAssemblyData
+```
+
 ## What it does
 - **Athlete view:** shows only the current workout window - tomorrow during the 4:00 PM preview or today during the overnight session.
 - **Self-wipe:** shows a high-contrast `Garage Closed` state from 9:01 AM through 11:59 AM in `America/New_York`.
@@ -137,6 +197,30 @@ Organizer staging saves the new workout and resets `current_state.json` back to 
 streamlit run streamlit_app.py
 ```
 
+### Quickstart commands
+```bash
+cd /usr/local/git/TheAssembly
+
+# Install dependencies
+python3 -m pip install -r requirements.txt
+
+# Create local secrets file from template (one-time setup)
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+
+# Run athlete app (terminal 1)
+python3 -m streamlit run athlete_app.py
+
+# Run admin app (terminal 2)
+python3 -m streamlit run admin_app.py
+
+# Run tests
+PYTHONPATH=. pytest tests/test_schedule.py -q
+```
+
+Run athlete and admin in separate terminals so each process can own its Streamlit port.
+
+In VS Code you can launch both at once: open the Command Palette, choose **Tasks: Run Task**, and select **Run Both Apps (Athlete + Admin)**. Each app opens in its own dedicated terminal panel.
+
 ## Test locally
 ```bash
 python3 -m unittest discover -s tests
@@ -222,3 +306,73 @@ Minimal setup (no Slack, no SMTP):
 2. Validate JSON shape (`workouts.json`, `current_state.json`).
 3. Confirm athlete/admin behavior on deployed URLs after push.
 4. If needed, use Streamlit reboot to force fresh secret/config load.
+
+## Memory Capacity Profiling
+
+Streamlit Community Cloud allows **1 GB** of memory per app deployment. Use the script below to measure local process RSS across athlete scenarios and the admin idle baseline, then estimate cloud headroom.
+
+> **Scope note:** Admin interaction-peak profiling is intentionally excluded. The admin app is coordinator-only, so only its idle baseline is measured.
+
+### Prerequisites
+1. Both apps running locally (see [Quickstart commands](#quickstart-commands)).
+2. Note the PID of each process (see step 1 below).
+
+### How to run
+
+**Step 1 — capture PIDs after starting apps:**
+```bash
+# In a separate terminal after both apps are running:
+pgrep -af streamlit
+# Note the PID of athlete_app.py (PID_A) and admin_app.py (PID_ADM)
+```
+
+**Step 2 — make the script executable (one-time):**
+```bash
+chmod +x tools/memory_profile_streamlit.sh
+```
+
+**Step 3 — run each scenario:**
+```bash
+# Athlete idle baseline (30s, no interaction)
+./tools/memory_profile_streamlit.sh athlete-idle 30 2 <PID_A>
+
+# Athlete typical interactions (60s — navigate workout view, refresh a few times)
+./tools/memory_profile_streamlit.sh athlete-typical 60 2 <PID_A>
+
+# Athlete worst-case (90s — trigger all visible data loads)
+./tools/memory_profile_streamlit.sh athlete-worst-case 90 2 <PID_A>
+
+# Admin idle baseline only
+./tools/memory_profile_streamlit.sh admin-idle 30 2 <PID_ADM>
+
+# Both apps — athlete typical while admin is idle
+./tools/memory_profile_streamlit.sh both-typical 60 2 <PID_A> <PID_ADM>
+
+# Both apps — athlete worst-case while admin is idle
+./tools/memory_profile_streamlit.sh both-worst-case 90 2 <PID_A> <PID_ADM>
+```
+
+Reports are saved automatically to `tools/reports/` with a timestamp prefix.
+
+### Reading the verdict
+
+Each report ends with a capacity verdict that accounts for estimated Streamlit Cloud runtime overhead (~180 MB):
+
+| Verdict | Estimated Cloud usage |
+| --- | --- |
+| ✅ SAFE | ≤ 700 MB — well within 1 GB |
+| ⚠️ CAUTION | 701–900 MB — monitor closely |
+| 🔴 UNSAFE | > 900 MB — likely to exceed limit |
+
+### Capacity snapshot template
+
+Record results here after each profiling session:
+
+| Date | Scenario | Process 1 peak | Process 2 peak | Combined peak | Cloud est. | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| YYYY-MM-DD | athlete-idle | MB | — | — | MB | |
+| YYYY-MM-DD | athlete-typical | MB | — | — | MB | |
+| YYYY-MM-DD | athlete-worst-case | MB | — | — | MB | |
+| YYYY-MM-DD | admin-idle | — | MB | — | MB | |
+| YYYY-MM-DD | both-typical | MB | MB | MB | MB | |
+| YYYY-MM-DD | both-worst-case | MB | MB | MB | MB | |
