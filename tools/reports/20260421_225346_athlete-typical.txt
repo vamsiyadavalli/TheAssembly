@@ -1,0 +1,62 @@
+=====================================================
+ Memory Profile: athlete-typical
+ Date     : Tue Apr 21 22:53:46 EDT 2026
+ Duration : 60s   Interval: 2s
+ PID1     : 96829
+=====================================================
+
+Time(s)  RSS_1(MB)
+-------  ---------
+0s      18MB
+2s      18MB
+4s      11MB
+6s      11MB
+8s      11MB
+10s      61MB
+12s      61MB
+14s      61MB
+17s      32MB
+19s      32MB
+21s      32MB
+23s      32MB
+25s      32MB
+27s      24MB
+29s      19MB
+31s      19MB
+33s      19MB
+35s      19MB
+37s      15MB
+39s      15MB
+41s      14MB
+43s      14MB
+45s      20MB
+47s      20MB
+49s      20MB
+51s      20MB
+53s      20MB
+55s      20MB
+57s      20MB
+59s      15MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : athlete-typical
+ Samples          : 30
+
+ Process 1 (PID 96829)
+   Peak RSS       : 61 MB
+   Avg RSS        : 24 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 61 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 241 MB / 1024 MB
+ Headroom         : 783 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_225346_athlete-typical.txt
+=====================================================

@@ -1,0 +1,47 @@
+=====================================================
+ Memory Profile: admin-idle
+ Date     : Tue Apr 21 22:59:45 EDT 2026
+ Duration : 30s   Interval: 2s
+ PID1     : 97378
+=====================================================
+
+Time(s)  RSS_1(MB)
+-------  ---------
+0s      11MB
+2s      11MB
+4s      11MB
+6s      11MB
+8s      11MB
+10s      11MB
+12s      11MB
+14s      15MB
+16s      15MB
+18s      15MB
+20s      15MB
+22s      15MB
+24s      15MB
+26s      15MB
+28s      11MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : admin-idle
+ Samples          : 15
+
+ Process 1 (PID 97378)
+   Peak RSS       : 15 MB
+   Avg RSS        : 12 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 15 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 195 MB / 1024 MB
+ Headroom         : 829 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_225945_admin-idle.txt
+=====================================================
