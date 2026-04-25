@@ -1,4 +1,17 @@
 graph TD
+    subgraph GymOwnerSetup["🏋️ Gym Owner Setup Path"]
+        Template["TheAssembly\n(public template repo)\nUse this template ↓"]
+        DataTemplate["TheAssemblyData-template\n(public starter repo)\nUse this template ↓"]
+        GymRepo["YourGymName app repo\n(forked from template)"]
+        GymData["YourGymName-data\n(private — YOUR IP)"]
+        PAT["GitHub PAT\nRead-only → athlete\nRead+Write → admin"]
+        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc."]
+        Template --> GymRepo
+        DataTemplate --> GymData
+        PAT --> StreamlitSecrets
+        GymData -.->|"stays private forever"| GymData
+    end
+
     subgraph StreamlitCloud["☁️ Streamlit Community Cloud"]
         AthleteApp["athlete_app.py\nAthlete Portal"]
         AdminApp["admin_app.py\nOrganizer Portal"]
@@ -14,7 +27,7 @@ graph TD
         end
     end
 
-    subgraph TheAssemblyData["🔒 TheAssemblyData (Private GitHub Repo)"]
+    subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
         WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
         StateJSON["current_state.json\n{ status: open | closed }"]
     end
@@ -37,9 +50,11 @@ graph TD
 
     subgraph CI["🔄 GitHub Actions"]
         TestsWF[".github/workflows/tests.yml\nunit tests + ruff lint\non push/PR to dev and master"]
-        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates TheAssemblyData\ncron + manual dispatch"]
+        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates data repo\ncron + manual dispatch"]
     end
 
+    GymRepo --> StreamlitCloud
+    StreamlitSecrets --> Secrets
     AthleteApp -->|"app_role=athlete"| StreamlitApp
     AdminApp -->|"app_role=admin"| StreamlitApp
     StreamlitApp --> Config
@@ -52,4 +67,5 @@ graph TD
     Secrets --> Config
     Secrets --> StreamlitApp
     Schedule --> TimeLogic
-    CI -->|"reads"| TheAssemblyData
+    CI -->|"reads"| PrivateDataRepo
+
