@@ -2,6 +2,10 @@
 
 TheAssembly is a privacy-first fitness whiteboard built for Streamlit Community Cloud.
 
+## Architecture
+
+> [View architecture diagram →](docs/architecture.mmd)
+
 ## What it does
 - **Athlete view:** shows only the current workout window - tomorrow during the 4:00 PM preview or today during the overnight session.
 - **Self-wipe:** shows a high-contrast `Garage Closed` state from 9:01 AM through 11:59 AM in `America/New_York`.
