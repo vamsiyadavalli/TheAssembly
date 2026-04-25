@@ -1,0 +1,35 @@
+=====================================================
+ Memory Profile: self-test
+ Date     : Tue Apr 21 22:37:59 EDT 2026
+ Duration : 6s   Interval: 2s
+ PID1     : 95449
+=====================================================
+
+Time(s)  RSS_1(MB)
+-------  ---------
+0s      1MB
+2s      0MB
+4s      0MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : self-test
+ Samples          : 3
+
+ Process 1 (PID 95449)
+   Peak RSS       : 1 MB
+   Avg RSS        : 0 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 1 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 181 MB / 1024 MB
+ Headroom         : 843 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_223759_self-test.txt
+=====================================================

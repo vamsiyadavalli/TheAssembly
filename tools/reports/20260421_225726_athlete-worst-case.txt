@@ -1,0 +1,62 @@
+=====================================================
+ Memory Profile: athlete-worst-case
+ Date     : Tue Apr 21 22:57:26 EDT 2026
+ Duration : 60s   Interval: 2s
+ PID1     : 96829
+=====================================================
+
+Time(s)  RSS_1(MB)
+-------  ---------
+0s      19MB
+2s      19MB
+4s      19MB
+7s      19MB
+9s      61MB
+11s      61MB
+13s      61MB
+15s      61MB
+17s      61MB
+19s      61MB
+21s      61MB
+23s      61MB
+25s      61MB
+27s      61MB
+29s      61MB
+31s      62MB
+33s      62MB
+35s      61MB
+37s      62MB
+39s      62MB
+41s      62MB
+43s      62MB
+45s      63MB
+47s      62MB
+49s      62MB
+51s      63MB
+53s      63MB
+55s      63MB
+57s      63MB
+59s      63MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : athlete-worst-case
+ Samples          : 30
+
+ Process 1 (PID 96829)
+   Peak RSS       : 63 MB
+   Avg RSS        : 56 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 63 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 243 MB / 1024 MB
+ Headroom         : 781 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_225726_athlete-worst-case.txt
+=====================================================

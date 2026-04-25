@@ -1,0 +1,47 @@
+=====================================================
+ Memory Profile: athlete-idle
+ Date     : Tue Apr 21 22:52:09 EDT 2026
+ Duration : 30s   Interval: 2s
+ PID1     : 96829
+=====================================================
+
+Time(s)  RSS_1(MB)
+-------  ---------
+0s      21MB
+2s      17MB
+4s      21MB
+6s      21MB
+8s      21MB
+10s      21MB
+12s      21MB
+14s      21MB
+16s      21MB
+19s      21MB
+21s      21MB
+23s      21MB
+25s      21MB
+27s      21MB
+29s      21MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : athlete-idle
+ Samples          : 15
+
+ Process 1 (PID 96829)
+   Peak RSS       : 21 MB
+   Avg RSS        : 20 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 21 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 201 MB / 1024 MB
+ Headroom         : 823 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_225209_athlete-idle.txt
+=====================================================

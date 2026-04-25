@@ -1,0 +1,86 @@
+=====================================================
+ Memory Profile: both-worst-case
+ Date     : Tue Apr 21 23:01:14 EDT 2026
+ Duration : 90s   Interval: 2s
+ PID1     : 96829
+ PID2     : 97378
+=====================================================
+
+Time(s)  RSS_1(MB)  RSS_2(MB)  Combined(MB)
+-------  ---------  ---------  ------------
+0s      18MB       15MB       33MB
+2s      16MB       11MB       27MB
+4s      11MB       11MB       22MB
+6s      11MB       11MB       22MB
+8s      11MB       11MB       22MB
+10s      11MB       11MB       22MB
+12s      40MB       11MB       51MB
+14s      62MB       11MB       73MB
+16s      63MB       15MB       78MB
+18s      63MB       15MB       78MB
+20s      63MB       15MB       78MB
+22s      63MB       15MB       78MB
+24s      63MB       15MB       78MB
+26s      63MB       12MB       75MB
+28s      63MB       12MB       75MB
+30s      63MB       11MB       74MB
+32s      63MB       11MB       74MB
+34s      63MB       11MB       74MB
+36s      63MB       11MB       74MB
+38s      63MB       11MB       74MB
+40s      63MB       11MB       74MB
+42s      63MB       11MB       74MB
+44s      63MB       11MB       74MB
+46s      63MB       15MB       78MB
+48s      62MB       15MB       77MB
+50s      63MB       15MB       78MB
+52s      63MB       15MB       78MB
+54s      63MB       15MB       78MB
+56s      63MB       15MB       78MB
+58s      63MB       15MB       78MB
+60s      63MB       15MB       78MB
+63s      63MB       15MB       78MB
+65s      63MB       11MB       74MB
+67s      25MB       11MB       36MB
+69s      15MB       11MB       26MB
+71s      41MB       11MB       52MB
+73s      63MB       11MB       74MB
+75s      63MB       15MB       78MB
+77s      63MB       15MB       78MB
+79s      63MB       15MB       78MB
+81s      63MB       15MB       78MB
+83s      63MB       15MB       78MB
+85s      63MB       15MB       78MB
+87s      63MB       15MB       78MB
+89s      63MB       15MB       78MB
+
+=====================================================
+ SUMMARY
+=====================================================
+ Scenarios        : both-worst-case
+ Samples          : 45
+
+ Process 1 (PID 96829)
+   Peak RSS       : 63 MB
+   Avg RSS        : 53 MB
+
+ Process 2 (PID 97378)
+   Peak RSS       : 15 MB
+   Avg RSS        : 13 MB
+
+ Combined
+   Peak RSS       : 78 MB
+   Avg RSS        : 66 MB
+
+=====================================================
+ CAPACITY VERDICT vs Streamlit 1 GB
+=====================================================
+ Local peak       : 78 MB
+ + Cloud overhead : 180 MB (estimated)
+ Estimated Cloud  : 258 MB / 1024 MB
+ Headroom         : 766 MB
+
+ VERDICT          : ✅ SAFE — well within 1 GB limit
+=====================================================
+ Report saved to: /usr/local/git/TheAssembly/tools/reports/20260421_230114_both-worst-case.txt
+=====================================================
