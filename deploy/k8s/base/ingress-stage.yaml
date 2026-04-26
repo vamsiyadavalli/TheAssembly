@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stage-ingress
+  namespace: theassembly-apps
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - stage-asm-athlete.theassembly.app
+    - stage-asm-control.theassembly.app
+    secretName: stage-tls-cert
+  rules:
+  - host: stage-asm-athlete.theassembly.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: athlete
+            port:
+              number: 8501
+  - host: stage-asm-control.theassembly.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: admin
+            port:
+              number: 8501

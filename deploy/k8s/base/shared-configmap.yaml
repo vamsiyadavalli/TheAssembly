@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: theassembly-config
+  namespace: theassembly-apps
+data:
+  APP_TIMEZONE: America/New_York
+  WORKOUTS_REPO_BRANCH: main
+  WORKOUTS_FILE_PATH: workouts.json
+  CURRENT_STATE_FILE_PATH: current_state.json

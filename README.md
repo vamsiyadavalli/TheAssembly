@@ -124,6 +124,47 @@ docker compose up
 # Admin   → http://localhost:8502
 ```
 
+### Run with Docker + separate MCP containers
+
+```bash
+# Starts athlete/admin plus MCP containers in a separate compose file/profile
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp up -d
+
+# App endpoints
+# Athlete → http://localhost:8501
+# Admin   → http://localhost:8502
+
+# MCP endpoints (example)
+# Playwright MCP → localhost:8931
+# Pyright MCP    → localhost:8932
+```
+
+### Kubernetes staging (dev/stage only — production on Streamlit Cloud)
+
+**Production** remains on Streamlit Cloud:
+- `asm-athlete.streamlit.app`
+- `asm-control.streamlit.app`
+
+**Staging and Development** use self-hosted Kubernetes in `deploy/k8s/`:
+
+- `theassembly-apps` namespace: athlete, admin apps
+- `theassembly-mcp` namespace: MCP services (playwright, pyright) with hardened networking
+
+**Environment Overlays**:
+
+```bash
+# Development: single replicas, no public Ingress, minimal resources
+kubectl apply -k deploy/k8s/overlays/dev
+
+# Staging: 2 replicas, public Ingress with TLS on stage-asm-*.theassembly.app
+kubectl apply -k deploy/k8s/overlays/stage
+
+# Production (template for future use): 
+# To migrate from Streamlit Cloud to self-hosted, see deploy/k8s/overlays/prod
+```
+
+See [deploy/k8s/README.md](deploy/k8s/README.md) for complete deployment guide including image refs, secrets, TLS (cert-manager), NetworkPolicy validation, and troubleshooting.
+
 ### Tests
 
 ```bash

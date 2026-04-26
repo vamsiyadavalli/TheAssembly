@@ -1,0 +1,89 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-mcp
+  namespace: theassembly-apps
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from ingress-controller (Traefik) on port 8501
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: traefik
+    ports:
+    - protocol: TCP
+      port: 8501
+  egress:
+  # Allow DNS to kube-dns
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow to MCP services in theassembly-mcp namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          tier: mcp
+    ports:
+    - protocol: TCP
+      port: 8931  # mcp-playwright
+    - protocol: TCP
+      port: 8932  # mcp-pyright
+  # Allow outbound to external IPs for GitHub API, HN API, etc.
+  - to:
+    - podSelector: {}
+      namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-inbound
+  namespace: theassembly-mcp
+spec:
+  podSelector:
+    matchLabels:
+      tier: mcp
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from theassembly-apps namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          tier: apps
+    ports:
+    - protocol: TCP
+      port: 8931  # playwright
+    - protocol: TCP
+      port: 8932  # pyright
+  egress:
+  # Allow DNS to kube-dns
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow outbound to external IPs for MCP runtime dependencies
+  - to:
+    - podSelector: {}
+      namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
