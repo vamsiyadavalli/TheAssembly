@@ -8,7 +8,6 @@ import pytest
 
 from theassembly.weather import (
     HourlyWeather,
-    WorkoutWeather,
     _wmo_description,
     fetch_workout_weather,
     get_clothing_recommendation,
