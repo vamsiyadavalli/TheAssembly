@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: theassembly-mcp
+  labels:
+    app.kubernetes.io/part-of: theassembly
+    app.kubernetes.io/tier: mcp

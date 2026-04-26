@@ -1,0 +1,20 @@
+services:
+  mcp-playwright:
+    image: ${MCP_PLAYWRIGHT_IMAGE:-ghcr.io/your-org/mcp-playwright:latest}
+    profiles: ["mcp"]
+    ports:
+      - "8931:8931"
+    environment:
+      MCP_PORT: "8931"
+    restart: unless-stopped
+
+  # Pylance itself is a VS Code extension and does not run as an MCP server.
+  # This service is the containerized alternative for Python analysis in MCP flows.
+  mcp-pyright:
+    image: ${MCP_PYRIGHT_IMAGE:-ghcr.io/your-org/mcp-pyright:latest}
+    profiles: ["mcp"]
+    ports:
+      - "8932:8932"
+    environment:
+      MCP_PORT: "8932"
+    restart: unless-stopped

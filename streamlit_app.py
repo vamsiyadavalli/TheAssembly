@@ -12,6 +12,7 @@ import pytz
 import streamlit as st
 
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
+from theassembly.hn_topics import HNConversationStarter, fetch_hn_conversation_starter
 from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
@@ -263,6 +264,11 @@ def _cached_fetch_weather(
     return fetch_workout_weather(lat, lon, target, timezone_name)
 
 
+@st.cache_data(ttl=3600)
+def _cached_fetch_hn_conversation_starter() -> HNConversationStarter | None:
+    return fetch_hn_conversation_starter()
+
+
 def _render_weather_panel(weather: WorkoutWeather | None) -> None:
     st.write("")
     st.markdown('<div class="section-label">Dress for the Session &bull; 5–8am</div>', unsafe_allow_html=True)
@@ -300,9 +306,47 @@ def _render_weather_panel(weather: WorkoutWeather | None) -> None:
     )
 
 
+def _render_hn_conversation_starter(starter: HNConversationStarter | None) -> None:
+    st.write("")
+    st.markdown('<div class="section-label">Gym Conversation Starter</div>', unsafe_allow_html=True)
+
+    if starter is None:
+        st.markdown(
+            '<div class="panel-card"><span style="color:#94a3b8">Trending topics are unavailable right now.</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    topic_markup = "".join(
+        (
+            f'<div style="margin-bottom:0.45rem">'
+            f'<strong>#{idx}.</strong> '
+            f'<a href="{topic.display_url}" target="_blank" style="color:#e2e8f0;text-decoration:underline">{topic.title}</a> '
+            f'<span style="color:#94a3b8">({topic.points} pts • {topic.comments} comments)</span>'
+            f'</div>'
+        )
+        for idx, topic in enumerate(starter.top_topics, start=1)
+    )
+
+    st.markdown(
+        (
+            '<div class="panel-card">'
+            '<div style="font-weight:700;margin-bottom:0.45rem;color:#fb923c">Top 3 HN Topics Right Now</div>'
+            f'{topic_markup}'
+            '<div style="margin:0.75rem 0 0.35rem;font-weight:700">Most Engaging Discussion</div>'
+            f'<div style="margin-bottom:0.4rem"><a href="{starter.selected_topic.hn_link}" target="_blank" style="color:#e2e8f0;text-decoration:underline">{starter.selected_topic.title}</a></div>'
+            f'<div style="color:#cbd5e1;line-height:1.55">{starter.summary}</div>'
+            f'<div style="margin-top:0.6rem;color:#64748b;font-size:0.78rem">Refreshed: {starter.refreshed_at_utc}</div>'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.title("TheAssembly")
+    conversation_starter = _cached_fetch_hn_conversation_starter()
 
     if slate.status == "open" and slate.workout is not None:
         workout = slate.workout
@@ -332,6 +376,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         cue_markup = "".join(f'<span class="cue-chip">{cue}</span>' for cue in workout.technical_cues)
         st.markdown(f'<div class="panel-card">{cue_markup}</div>', unsafe_allow_html=True)
 
+        _render_hn_conversation_starter(conversation_starter)
+
         weather_date = (slate.workout.workout_date).isoformat() if slate.workout else None
         if weather_date:
             weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
@@ -350,6 +396,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     )
     if slate.next_release_label:
         st.caption(f"Next scheduled release: {slate.next_release_label}")
+
+    _render_hn_conversation_starter(conversation_starter)
 
     # Always show weather — even when the garage is closed.
     from datetime import date as _date
