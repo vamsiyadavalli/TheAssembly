@@ -14,6 +14,7 @@ import streamlit as st
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
 from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
+from theassembly.weather import WorkoutWeather, fetch_workout_weather
 
 
 st.set_page_config(
@@ -74,11 +75,33 @@ CUSTOM_CSS = """
         letter-spacing: 0.08em;
         margin-bottom: 0.45rem;
     }
+    .weather-hour-col {
+        text-align: center;
+        padding: 0.4rem 0.2rem;
+        font-size: 0.9rem;
+    }
+    .weather-hour-time {
+        font-weight: 600;
+        color: #fb923c;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .clothing-rec {
+        border-left: 3px solid rgba(251, 146, 60, 0.6);
+        padding: 0.5rem 0.8rem;
+        font-size: 1rem;
+        line-height: 1.55;
+        color: #e2e8f0;
+    }
 </style>
 """
 
 
 AppRole = Literal["athlete", "admin"]
+
+_DEFAULT_GYM_LAT = 39.3448   # Oakdale High School, Ijamsville MD
+_DEFAULT_GYM_LON = -77.3241
 
 
 @dataclass
@@ -94,6 +117,8 @@ class AppConfig:
     app_role: AppRole
     admin_password: str | None
     admin_enabled: bool
+    gym_lat: float
+    gym_lon: float
 
 
 def _secret_or_env(key: str, default: str | None = None) -> str | None:
@@ -154,6 +179,13 @@ def _app_config(app_role: AppRole = "athlete") -> AppConfig:
 
     github_enabled = bool(github_token and owner and repo)
 
+    def _parse_coord(key: str, default: float) -> float:
+        raw = _secret_or_env(key)
+        try:
+            return float(raw) if raw is not None else default
+        except ValueError:
+            return default
+
     return AppConfig(
         github_enabled=github_enabled,
         github_token=github_token,
@@ -166,6 +198,8 @@ def _app_config(app_role: AppRole = "athlete") -> AppConfig:
         app_role=app_role,
         admin_password=admin_password,
         admin_enabled=bool(admin_password),
+        gym_lat=_parse_coord("GYM_LAT", 39.3448),
+        gym_lon=_parse_coord("GYM_LON", -77.3241),
     )
 
 
@@ -217,7 +251,56 @@ def _load_data(config: AppConfig) -> tuple[list[WorkoutRecord], CurrentState, st
     return records, current_state, None
 
 
-def _render_athlete_view(slate: AthleteSlate) -> None:
+@st.cache_data(ttl=1800)
+def _cached_fetch_weather(
+    lat: float,
+    lon: float,
+    target_date_iso: str,
+    timezone_name: str,
+) -> WorkoutWeather | None:
+    from datetime import date as _date
+    target = _date.fromisoformat(target_date_iso)
+    return fetch_workout_weather(lat, lon, target, timezone_name)
+
+
+def _render_weather_panel(weather: WorkoutWeather | None) -> None:
+    st.write("")
+    st.markdown('<div class="section-label">Dress for the Session &bull; 5–8am</div>', unsafe_allow_html=True)
+
+    if weather is None:
+        st.markdown(
+            '<div class="panel-card"><span style="color:#64748b">Weather unavailable right now.</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # Hourly grid
+    cols = st.columns(len(weather.hours))
+    for col, hw in zip(cols, weather.hours):
+        label = f"{hw.hour}:00am" if hw.hour < 12 else f"{hw.hour}:00pm"
+        with col:
+            st.markdown(
+                f"""
+                <div class="weather-hour-col">
+                    <div class="weather-hour-time">{label}</div>
+                    <div style="font-size:1.05rem;font-weight:600;margin:0.25rem 0">{hw.temperature:.0f}&deg;F</div>
+                    <div style="font-size:0.8rem;color:#94a3b8">feels {hw.feels_like:.0f}&deg;</div>
+                    <div style="font-size:0.78rem;margin-top:0.3rem">{hw.condition}</div>
+                    <div style="font-size:0.78rem;color:#94a3b8">💨 {hw.wind_speed:.0f} mph</div>
+                    <div style="font-size:0.78rem;color:#94a3b8">💧 {hw.precip_probability}%</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.write("")
+    st.markdown(
+        f'<div class="panel-card"><div class="clothing-rec">{weather.clothing_recommendation}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.title("TheAssembly")
 
@@ -248,6 +331,11 @@ def _render_athlete_view(slate: AthleteSlate) -> None:
         st.markdown('<div class="section-label">Technical Cues</div>', unsafe_allow_html=True)
         cue_markup = "".join(f'<span class="cue-chip">{cue}</span>' for cue in workout.technical_cues)
         st.markdown(f'<div class="panel-card">{cue_markup}</div>', unsafe_allow_html=True)
+
+        weather_date = (slate.workout.workout_date).isoformat() if slate.workout else None
+        if weather_date:
+            weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
+            _render_weather_panel(weather)
         return
 
     st.markdown(
@@ -262,6 +350,12 @@ def _render_athlete_view(slate: AthleteSlate) -> None:
     )
     if slate.next_release_label:
         st.caption(f"Next scheduled release: {slate.next_release_label}")
+
+    # Always show weather — even when the garage is closed.
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
+    _render_weather_panel(weather)
 
 
 def _authenticate_admin(config: AppConfig) -> bool:
@@ -392,7 +486,7 @@ def main(app_role: AppRole = "athlete") -> None:
     records, current_state, error_message = _load_data(config)
     now = datetime.now(pytz.timezone(config.app_timezone))
     slate = resolve_athlete_slate(records, current_state, now, config.app_timezone)
-    _render_athlete_view(slate)
+    _render_athlete_view(slate, config)
 
     if error_message:
         st.warning(error_message) if config.app_role == "admin" else st.caption("Organizer configuration is still in progress.")
