@@ -595,14 +595,14 @@ def _build_photos_html(photos: list[PhotoRecord]) -> str:
             f'</div>'
         )
 
-    # Build per-photo keyframe rules: each photo is visible for 4 s, then fades out.
+    # Build per-photo keyframe rules: each photo is visible for 8 s, then fades out.
     n = len(photos)
     hold_pct = round(100 / n, 2)
     fade_pct = round(hold_pct + 5, 2)
     # Inline <style> because nth-child delays depend on runtime count.
     style_rules = ""
     for idx in range(n):
-        delay = idx * 4
+        delay = idx * 8
         style_rules += f".photo-slide:nth-child({idx + 1}){{animation-delay:{delay}s}}"
     keyframe = (
         f"@keyframes photo-fade{n}"
@@ -611,7 +611,7 @@ def _build_photos_html(photos: list[PhotoRecord]) -> str:
         f"{fade_pct}%{{opacity:0}}"
         f"100%{{opacity:0}}}}"
     )
-    total_duration = n * 4
+    total_duration = n * 8
 
     slides_html = "".join(
         f'<div class="photo-slide" style="animation:{total_duration}s photo-fade{n} infinite">'
@@ -728,11 +728,11 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
         col_side = (
             _build_weather_html(weather)
-            + _build_photos_html(photos)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
             f'</div>'
+            + _build_photos_html(photos)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
             f'{_build_hn_html(conversation_starter)}'
@@ -772,11 +772,11 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
     closed_side = (
         _build_weather_html(weather)
-        + _build_photos_html(photos)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
         f'{_build_joke_html(joke)}'
         f'</div>'
+        + _build_photos_html(photos)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
         f'{_build_hn_html(conversation_starter)}'
