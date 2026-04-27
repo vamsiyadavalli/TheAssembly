@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 from dataclasses import dataclass
 from datetime import date
@@ -10,6 +11,12 @@ from urllib.parse import quote
 import requests
 
 from theassembly.models import CurrentState, PhotoRecord, WorkoutRecord, load_current_state, load_workouts, serialize_current_state, serialize_workouts
+
+try:
+    from PIL import Image as _PILImage
+    _PILLOW_AVAILABLE = True
+except ImportError:
+    _PILLOW_AVAILABLE = False
 
 
 @dataclass(frozen=True)
@@ -219,7 +226,25 @@ class GitHubDataRepository:
                 file_data = file_response.json()
                 raw_content = file_data.get("content", "").replace("\n", "").strip()
                 raw_bytes = base64.b64decode(raw_content)
-                mime = mimetypes.guess_type(entry["name"])[0] or "image/jpeg"
+
+                if _PILLOW_AVAILABLE:
+                    try:
+                        buf = io.BytesIO(raw_bytes)
+                        img = _PILImage.open(buf).convert("RGB")
+                        max_side = 800
+                        w, h = img.size
+                        if max(w, h) > max_side:
+                            scale = max_side / max(w, h)
+                            img = img.resize((int(w * scale), int(h * scale)), _PILImage.LANCZOS)
+                        out = io.BytesIO()
+                        img.save(out, format="JPEG", quality=70, optimize=True)
+                        raw_bytes = out.getvalue()
+                        mime = "image/jpeg"
+                    except Exception:
+                        mime = mimetypes.guess_type(entry["name"])[0] or "image/jpeg"
+                else:
+                    mime = mimetypes.guess_type(entry["name"])[0] or "image/jpeg"
+
                 data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode()}"
                 records.append(PhotoRecord(filename=entry["name"], data_uri=data_uri, date_str=prefix))
             except Exception:
