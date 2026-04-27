@@ -22,7 +22,7 @@ from theassembly.workout_formatting import format_workout_html, format_workout_s
 st.set_page_config(
     page_title="TheAssembly",
     page_icon=":weight_lifter:",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 
@@ -96,12 +96,19 @@ CUSTOM_CSS = """
         line-height: 1.55;
         color: #e2e8f0;
     }
+    /* ---- Layout width cap ---- */
+    .stMainBlockContainer {
+        max-width: 680px !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        margin: 0 auto !important;
+    }
     /* ---- Structured movements ---- */
     .workout-structured-header {
         font-size: 1.05rem;
         font-weight: 700;
         color: #e2e8f0;
-        margin-bottom: 0.7rem;
+        margin-bottom: 0.6rem;
     }
     .workout-legacy {
         font-size: 1.05rem;
@@ -109,64 +116,86 @@ CUSTOM_CSS = """
         white-space: pre-wrap;
         color: #e2e8f0;
     }
-    .movement-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 0.25rem;
-        font-size: 1rem;
+    .movement-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
     }
-    .movement-table thead tr {
-        border-bottom: 1px solid rgba(248, 250, 252, 0.12);
+    .movement-row {
+        padding: 0.55rem 0;
+        border-bottom: 1px solid rgba(248, 250, 252, 0.06);
     }
-    .movement-table th {
-        text-align: left;
-        padding: 0.35rem 0.6rem;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: #94a3b8;
-        font-weight: 600;
+    .movement-row:last-child { border-bottom: none; }
+    .movement-row-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
     }
-    .movement-table td {
-        padding: 0.45rem 0.6rem;
-        border-bottom: 1px solid rgba(248, 250, 252, 0.05);
-        vertical-align: middle;
-        color: #e2e8f0;
-    }
-    .movement-table tbody tr:last-child td {
-        border-bottom: none;
+    .movement-row-left {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        flex: 1;
+        min-width: 0;
     }
     .mvmt-reps {
-        width: 4.5rem;
-        font-weight: 600;
+        font-weight: 700;
         color: #fb923c;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
-    .mvmt-name { font-weight: 600; }
-    .mvmt-rx, .mvmt-scaled { width: 7rem; }
-    .mvmt-notes { color: #94a3b8; font-size: 0.9rem; }
+    .mvmt-name {
+        font-weight: 600;
+        color: #e2e8f0;
+    }
+    .movement-badges {
+        display: flex;
+        gap: 0.35rem;
+        flex-shrink: 0;
+    }
+    .mvmt-notes {
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-top: 0.15rem;
+    }
+    .movement-finisher-block {
+        margin-top: 1rem;
+        padding: 0.75rem 0.9rem;
+        border-radius: 10px;
+        background: rgba(245, 158, 11, 0.07);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    .movement-section-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #f59e0b;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 0.5rem;
+    }
     .rx-badge {
         display: inline-block;
-        padding: 0.2rem 0.55rem;
-        border-radius: 6px;
+        padding: 0.15rem 0.5rem;
+        border-radius: 5px;
         background: rgba(16, 185, 129, 0.18);
         border: 1px solid rgba(16, 185, 129, 0.4);
         color: #6ee7b7;
-        font-size: 0.88rem;
+        font-size: 0.82rem;
         font-weight: 600;
         white-space: nowrap;
     }
     .scaled-badge {
         display: inline-block;
-        padding: 0.2rem 0.55rem;
-        border-radius: 6px;
+        padding: 0.15rem 0.5rem;
+        border-radius: 5px;
         background: rgba(245, 158, 11, 0.15);
         border: 1px solid rgba(245, 158, 11, 0.35);
         color: #fcd34d;
-        font-size: 0.88rem;
+        font-size: 0.82rem;
         font-weight: 600;
         white-space: nowrap;
     }
-    .weight-none { color: #475569; font-size: 0.85rem; }
 </style>
 """
 

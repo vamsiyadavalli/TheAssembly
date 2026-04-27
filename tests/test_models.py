@@ -254,6 +254,26 @@ class MovementModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_workouts(raw_text)
 
+    def test_movement_section_field_parsed(self) -> None:
+        m = Movement.from_dict({"name": "Hollow Rocks", "reps": "45s", "section": "Finisher"})
+
+        self.assertEqual("Finisher", m.section)
+
+    def test_movement_to_dict_omits_empty_section(self) -> None:
+        m = Movement.from_dict({"name": "Wall Balls", "reps": "12"})
+        d = m.to_dict()
+
+        self.assertNotIn("section", d)
+        self.assertEqual("", m.section)
+
+    def test_movement_section_round_trip(self) -> None:
+        original = {"name": "Flutter Kicks", "reps": "45s", "notes": "3 rounds", "section": "Finisher"}
+        m = Movement.from_dict(original)
+        d = m.to_dict()
+
+        self.assertEqual("Finisher", d["section"])
+        self.assertEqual("3 rounds", d["notes"])
+
 
 if __name__ == "__main__":
     unittest.main()
