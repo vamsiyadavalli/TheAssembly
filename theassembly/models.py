@@ -26,6 +26,51 @@ def _normalize_cues(value: Any) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+class Movement:
+    """A single structured movement with optional Rx and Scaled weight variants."""
+
+    name: str
+    reps: str = ""
+    rx_weight: str = ""
+    scaled_weight: str = ""
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "Movement":
+        normalized = {_normalize_key(k): v for k, v in payload.items()}
+        name = str(normalized.get("name", "")).strip()
+        if not name:
+            raise ValueError("Movement entry is missing required field: name")
+        return cls(
+            name=name,
+            reps=str(normalized.get("reps", "")).strip(),
+            rx_weight=str(normalized.get("rx_weight", "")).strip(),
+            scaled_weight=str(normalized.get("scaled_weight", "")).strip(),
+            notes=str(normalized.get("notes", "")).strip(),
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        result: dict[str, str] = {"name": self.name}
+        if self.reps:
+            result["reps"] = self.reps
+        if self.rx_weight:
+            result["rx_weight"] = self.rx_weight
+        if self.scaled_weight:
+            result["scaled_weight"] = self.scaled_weight
+        if self.notes:
+            result["notes"] = self.notes
+        return result
+
+
+def _normalize_movements(value: Any) -> tuple[Movement, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("movements must be a list of movement objects.")
+    return tuple(Movement.from_dict(item) for item in value)
+
+
+@dataclass(frozen=True)
 class WorkoutRecord:
     date: str
     release_time: str
@@ -33,6 +78,7 @@ class WorkoutRecord:
     stimulus: str
     technical_cues: tuple[str, ...]
     status: str = "scheduled"
+    movements: tuple[Movement, ...] = ()
 
     @property
     def workout_date(self) -> date:
@@ -60,6 +106,7 @@ class WorkoutRecord:
             stimulus=str(normalized["stimulus"]).strip(),
             technical_cues=_normalize_cues(normalized["technical_cues"]),
             status=str(normalized.get("status", "scheduled")).strip() or "scheduled",
+            movements=_normalize_movements(normalized.get("movements")),
         )
 
         _ = record.workout_date
@@ -67,7 +114,7 @@ class WorkoutRecord:
         return record
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "date": self.date,
             "release_time": self.release_time,
             "content": self.workout_content,
@@ -75,6 +122,9 @@ class WorkoutRecord:
             "technical_cues": list(self.technical_cues),
             "status": self.status,
         }
+        if self.movements:
+            result["movements"] = [m.to_dict() for m in self.movements]
+        return result
 
 
 @dataclass(frozen=True)

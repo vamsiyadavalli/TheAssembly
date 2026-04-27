@@ -1,7 +1,7 @@
 import unittest
 
 from theassembly.github_repo import build_text_update_payload, build_update_payload
-from theassembly.models import WorkoutRecord, load_current_state, load_workouts
+from theassembly.models import Movement, WorkoutRecord, load_current_state, load_workouts
 
 
 class WorkoutModelTests(unittest.TestCase):
@@ -114,6 +114,145 @@ class WorkoutModelTests(unittest.TestCase):
         self.assertEqual("Open slate", payload["message"])
         self.assertEqual("main", payload["branch"])
         self.assertIn("content", payload)
+
+
+class MovementModelTests(unittest.TestCase):
+    def test_movement_from_dict_parses_all_fields(self) -> None:
+        m = Movement.from_dict(
+            {"name": "DB Snatches", "reps": "15", "rx_weight": "55 lbs", "scaled_weight": "35 lbs", "notes": "Alt. arms"}
+        )
+
+        self.assertEqual("DB Snatches", m.name)
+        self.assertEqual("15", m.reps)
+        self.assertEqual("55 lbs", m.rx_weight)
+        self.assertEqual("35 lbs", m.scaled_weight)
+        self.assertEqual("Alt. arms", m.notes)
+
+    def test_movement_from_dict_requires_name(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({"reps": "10", "rx_weight": "45 lbs"})
+
+    def test_movement_to_dict_omits_empty_fields(self) -> None:
+        m = Movement.from_dict({"name": "200m Run", "reps": "1"})
+        d = m.to_dict()
+
+        self.assertEqual({"name": "200m Run", "reps": "1"}, d)
+        self.assertNotIn("rx_weight", d)
+        self.assertNotIn("scaled_weight", d)
+        self.assertNotIn("notes", d)
+
+    def test_workout_record_accepts_structured_movements(self) -> None:
+        raw_text = """
+        [
+          {
+            "date": "2026-05-10",
+            "release_time": "05:30",
+            "content": "5 Rounds for Time",
+            "stimulus": "Strength endurance",
+            "technical_cues": ["Breathe at the top"],
+            "movements": [
+              {"name": "DB Snatches", "reps": "15", "rx_weight": "55 lbs", "scaled_weight": "35 lbs"},
+              {"name": "200m Run", "reps": "1"}
+            ]
+          }
+        ]
+        """
+
+        records = load_workouts(raw_text)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual(2, len(records[0].movements))
+        self.assertEqual("DB Snatches", records[0].movements[0].name)
+        self.assertEqual("55 lbs", records[0].movements[0].rx_weight)
+        self.assertEqual("35 lbs", records[0].movements[0].scaled_weight)
+        self.assertEqual("200m Run", records[0].movements[1].name)
+        self.assertEqual("", records[0].movements[1].rx_weight)
+
+    def test_workout_record_movements_round_trip(self) -> None:
+        record = WorkoutRecord.from_dict(
+            {
+                "date": "2026-05-10",
+                "release_time": "05:30",
+                "content": "5 Rounds for Time",
+                "stimulus": "Strength endurance",
+                "technical_cues": ["Breathe at the top"],
+                "movements": [
+                    {"name": "DB Snatches", "reps": "15", "rx_weight": "55 lbs", "scaled_weight": "35 lbs"},
+                    {"name": "200m Run", "reps": "1"},
+                ],
+            }
+        )
+
+        serialized = record.to_dict()
+
+        self.assertIn("movements", serialized)
+        self.assertEqual(2, len(serialized["movements"]))
+        self.assertEqual("DB Snatches", serialized["movements"][0]["name"])
+        self.assertEqual("55 lbs", serialized["movements"][0]["rx_weight"])
+        # Empty fields are not serialized.
+        self.assertNotIn("rx_weight", serialized["movements"][1])
+
+    def test_workout_record_without_movements_omits_movements_key(self) -> None:
+        record = WorkoutRecord.from_dict(
+            {
+                "date": "2026-05-11",
+                "release_time": "05:30",
+                "content": "Legacy content text",
+                "stimulus": "Aerobic base",
+                "technical_cues": ["Stay steady"],
+            }
+        )
+
+        serialized = record.to_dict()
+
+        self.assertNotIn("movements", serialized)
+        self.assertEqual((), record.movements)
+
+    def test_mixed_legacy_and_structured_records_load_together(self) -> None:
+        raw_text = """
+        [
+          {
+            "date": "2026-05-10",
+            "release_time": "05:30",
+            "content": "Structured day",
+            "stimulus": "Power",
+            "technical_cues": ["Hips first"],
+            "movements": [{"name": "Deadlift", "reps": "5", "rx_weight": "225 lbs", "scaled_weight": "135 lbs"}]
+          },
+          {
+            "date": "2026-05-11",
+            "release_time": "05:30",
+            "content": "Legacy free-text day",
+            "stimulus": "Endurance",
+            "technical_cues": ["Breathe"]
+          }
+        ]
+        """
+
+        records = load_workouts(raw_text)
+
+        self.assertEqual(2, len(records))
+        structured = next(r for r in records if r.date == "2026-05-10")
+        legacy = next(r for r in records if r.date == "2026-05-11")
+        self.assertEqual(1, len(structured.movements))
+        self.assertEqual(0, len(legacy.movements))
+
+    def test_malformed_movement_entry_raises(self) -> None:
+        raw_text = """
+        [
+          {
+            "date": "2026-05-10",
+            "release_time": "05:30",
+            "content": "Bad movements",
+            "stimulus": "Test",
+            "technical_cues": ["Cue"],
+            "movements": [{"reps": "10"}]
+          }
+        ]
+        """
+
+        with self.assertRaises(ValueError):
+            load_workouts(raw_text)
 
 
 if __name__ == "__main__":
