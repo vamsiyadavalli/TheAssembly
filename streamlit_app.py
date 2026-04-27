@@ -77,31 +77,77 @@ CUSTOM_CSS = """
         letter-spacing: 0.08em;
         margin-bottom: 0.45rem;
     }
-    .weather-hour-col {
-        text-align: center;
-        padding: 0.4rem 0.2rem;
-        font-size: 0.9rem;
-    }
-    .weather-hour-time {
-        font-weight: 600;
-        color: #fb923c;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
     .clothing-rec {
         border-left: 3px solid rgba(251, 146, 60, 0.6);
         padding: 0.5rem 0.8rem;
-        font-size: 1rem;
+        font-size: 0.9rem;
         line-height: 1.55;
         color: #e2e8f0;
+        margin-top: 0.75rem;
     }
-    /* ---- Layout width cap ---- */
+    /* ---- Layout: reduce Streamlit default padding ---- */
     .stMainBlockContainer {
-        max-width: 680px !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
-        margin: 0 auto !important;
+        padding-top: 1.5rem !important;
+    }
+    /* ---- Responsive 2-col grid ---- */
+    .page-grid {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 1rem;
+        align-items: start;
+        max-width: 1040px;
+        margin: 0 auto;
+    }
+    @media (max-width: 720px) {
+        .page-grid { grid-template-columns: 1fr; }
+    }
+    .col-main > * + * { margin-top: 0.75rem; }
+    .col-side > * + * { margin-top: 0.75rem; }
+    /* ---- Weather strip ---- */
+    .weather-section-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+    }
+    .weather-strip {
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 0.4rem;
+        padding-bottom: 0.25rem;
+        scrollbar-width: none;
+    }
+    .weather-strip::-webkit-scrollbar { display: none; }
+    .wh-card {
+        min-width: 68px;
+        flex-shrink: 0;
+        text-align: center;
+        padding: 0.4rem 0.3rem;
+        background: rgba(248, 250, 252, 0.04);
+        border-radius: 8px;
+        border: 1px solid rgba(248, 250, 252, 0.06);
+    }
+    .wh-time {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #fb923c;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .wh-temp {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0.2rem 0;
+    }
+    .wh-meta {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        line-height: 1.5;
     }
     /* ---- Structured movements ---- */
     .workout-structured-header {
@@ -370,141 +416,129 @@ def _cached_fetch_hn_conversation_starter() -> HNConversationStarter | None:
     return fetch_hn_conversation_starter()
 
 
-def _render_weather_panel(weather: WorkoutWeather | None) -> None:
-    st.write("")
-    st.markdown('<div class="section-label">Dress for the Session &bull; 5–8am</div>', unsafe_allow_html=True)
-
+def _build_weather_html(weather: WorkoutWeather | None) -> str:
+    """Return a self-contained HTML string for the weather side panel."""
     if weather is None:
-        st.markdown(
-            '<div class="panel-card"><span style="color:#64748b">Weather unavailable right now.</span></div>',
-            unsafe_allow_html=True,
+        return '<div class="panel-card"><span style="color:#64748b">Weather unavailable.</span></div>'
+
+    cards = ""
+    for hw in weather.hours:
+        label = f"{hw.hour}am" if hw.hour < 12 else f"{hw.hour - 12 if hw.hour > 12 else hw.hour}pm"
+        cards += (
+            f'<div class="wh-card">'
+            f'<div class="wh-time">{label}</div>'
+            f'<div class="wh-temp">{hw.temperature:.0f}°</div>'
+            f'<div class="wh-meta">feels {hw.feels_like:.0f}°<br>'
+            f'{hw.condition}<br>'
+            f'💨{hw.wind_speed:.0f}<br>'
+            f'💧{hw.precip_probability}%</div>'
+            f'</div>'
         )
-        return
 
-    # Hourly grid
-    cols = st.columns(len(weather.hours))
-    for col, hw in zip(cols, weather.hours):
-        label = f"{hw.hour}:00am" if hw.hour < 12 else f"{hw.hour}:00pm"
-        with col:
-            st.markdown(
-                f"""
-                <div class="weather-hour-col">
-                    <div class="weather-hour-time">{label}</div>
-                    <div style="font-size:1.05rem;font-weight:600;margin:0.25rem 0">{hw.temperature:.0f}&deg;F</div>
-                    <div style="font-size:0.8rem;color:#94a3b8">feels {hw.feels_like:.0f}&deg;</div>
-                    <div style="font-size:0.78rem;margin-top:0.3rem">{hw.condition}</div>
-                    <div style="font-size:0.78rem;color:#94a3b8">💨 {hw.wind_speed:.0f} mph</div>
-                    <div style="font-size:0.78rem;color:#94a3b8">💧 {hw.precip_probability}%</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    st.write("")
-    st.markdown(
-        f'<div class="panel-card"><div class="clothing-rec">{weather.clothing_recommendation}</div></div>',
-        unsafe_allow_html=True,
+    return (
+        f'<div class="panel-card">'
+        f'<div class="weather-section-label">Dress for the Session · 5–8am</div>'
+        f'<div class="weather-strip">{cards}</div>'
+        f'<div class="clothing-rec">{weather.clothing_recommendation}</div>'
+        f'</div>'
     )
 
 
-def _render_hn_conversation_starter(starter: HNConversationStarter | None) -> None:
-    st.write("")
-    st.markdown('<div class="section-label">Gym Conversation Starter</div>', unsafe_allow_html=True)
-
+def _build_hn_html(starter: HNConversationStarter | None) -> str:
+    """Return a self-contained HTML string for the HN conversation starter."""
     if starter is None:
-        st.markdown(
-            '<div class="panel-card"><span style="color:#94a3b8">Trending topics are unavailable right now.</span></div>',
-            unsafe_allow_html=True,
-        )
-        return
+        return '<span style="color:#94a3b8">Trending topics are unavailable right now.</span>'
 
     topic_markup = "".join(
         (
             f'<div style="margin-bottom:0.45rem">'
             f'<strong>#{idx}.</strong> '
             f'<a href="{topic.display_url}" target="_blank" style="color:#e2e8f0;text-decoration:underline">{topic.title}</a> '
-            f'<span style="color:#94a3b8">({topic.points} pts • {topic.comments} comments)</span>'
+            f'<span style="color:#94a3b8">({topic.points} pts · {topic.comments} comments)</span>'
             f'</div>'
         )
         for idx, topic in enumerate(starter.top_topics, start=1)
     )
 
-    st.markdown(
-        (
-            '<div class="panel-card">'
-            '<div style="font-weight:700;margin-bottom:0.45rem;color:#fb923c">Top 3 HN Topics Right Now</div>'
-            f'{topic_markup}'
-            '<div style="margin:0.75rem 0 0.35rem;font-weight:700">Most Engaging Discussion</div>'
-            f'<div style="margin-bottom:0.4rem"><a href="{starter.selected_topic.hn_link}" target="_blank" style="color:#e2e8f0;text-decoration:underline">{starter.selected_topic.title}</a></div>'
-            f'<div style="color:#cbd5e1;line-height:1.55">{starter.summary}</div>'
-            f'<div style="margin-top:0.6rem;color:#64748b;font-size:0.78rem">Refreshed: {starter.refreshed_at_utc}</div>'
-            '</div>'
-        ),
-        unsafe_allow_html=True,
+    return (
+        f'<div style="font-weight:700;margin-bottom:0.45rem;color:#fb923c">Top 3 HN Topics Right Now</div>'
+        f'{topic_markup}'
+        f'<div style="margin:0.75rem 0 0.35rem;font-weight:700">Most Engaging Discussion</div>'
+        f'<div style="margin-bottom:0.4rem"><a href="{starter.selected_topic.hn_link}" target="_blank" style="color:#e2e8f0;text-decoration:underline">{starter.selected_topic.title}</a></div>'
+        f'<div style="color:#cbd5e1;line-height:1.55">{starter.summary}</div>'
+        f'<div style="margin-top:0.6rem;color:#64748b;font-size:0.78rem">Refreshed: {starter.refreshed_at_utc}</div>'
     )
 
 
 def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.title("TheAssembly")
+
+    # Pre-fetch both async data sources before building HTML.
     conversation_starter = _cached_fetch_hn_conversation_starter()
 
     if slate.status == "open" and slate.workout is not None:
         workout = slate.workout
+        weather_date = workout.workout_date.isoformat()
+        weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
+
         subtitle = (
-            f"{workout.date} - preview available now"
+            f"{workout.date} · preview available now"
             if slate.is_preview
-            else f"{workout.date} - releases at {workout.release_time}"
+            else f"{workout.date} · releases at {workout.release_time}"
         )
+        cue_markup = "".join(f'<span class="cue-chip">{cue}</span>' for cue in workout.technical_cues)
+
+        col_main = (
+            f'<div class="hero-card">'
+            f'<div class="eyebrow">Athlete View</div>'
+            f'<div class="hero-title">{slate.heading}</div>'
+            f'<div style="color:#94a3b8;font-size:0.85rem;margin-top:0.2rem">{subtitle}</div>'
+            f'</div>'
+            f'<div class="panel-card workout-block">{format_workout_html(workout)}</div>'
+            f'<div class="panel-card">'
+            f'<div class="section-label" style="margin-bottom:0.3rem">Stimulus</div>'
+            f'{workout.stimulus}'
+            f'</div>'
+            f'<div class="panel-card">'
+            f'<div class="section-label" style="margin-bottom:0.3rem">Technical Cues</div>'
+            f'{cue_markup}'
+            f'</div>'
+        )
+
+        col_side = _build_weather_html(weather)
+
         st.markdown(
-            f"""
-            <div class="hero-card">
-                <div class="eyebrow">Athlete View</div>
-                <div class="hero-title">{slate.heading}</div>
-                <div>{subtitle}</div>
-            </div>
-            """,
+            f'<div class="page-grid">'
+            f'<div class="col-main">{col_main}</div>'
+            f'<div class="col-side">{col_side}</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
-        st.write("")
-        st.markdown('<div class="section-label">Workout Content</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="panel-card workout-block">{format_workout_html(workout)}</div>', unsafe_allow_html=True)
-        st.write("")
-        st.markdown('<div class="section-label">Stimulus</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="panel-card">{workout.stimulus}</div>', unsafe_allow_html=True)
-        st.write("")
-        st.markdown('<div class="section-label">Technical Cues</div>', unsafe_allow_html=True)
-        cue_markup = "".join(f'<span class="cue-chip">{cue}</span>' for cue in workout.technical_cues)
-        st.markdown(f'<div class="panel-card">{cue_markup}</div>', unsafe_allow_html=True)
 
-        _render_hn_conversation_starter(conversation_starter)
-
-        weather_date = (slate.workout.workout_date).isoformat() if slate.workout else None
-        if weather_date:
-            weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
-            _render_weather_panel(weather)
+        with st.expander("💬 Gym Conversation Starter", expanded=False):
+            st.markdown(_build_hn_html(conversation_starter), unsafe_allow_html=True)
         return
 
+    # Garage closed — single column.
     st.markdown(
-        f"""
-        <div class="hero-card">
-            <div class="eyebrow">Athlete View</div>
-            <div class="garage-closed">{slate.heading}</div>
-            <div>{slate.message}</div>
-        </div>
-        """,
+        f'<div class="hero-card">'
+        f'<div class="eyebrow">Athlete View</div>'
+        f'<div class="garage-closed">{slate.heading}</div>'
+        f'<div>{slate.message}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
     if slate.next_release_label:
         st.caption(f"Next scheduled release: {slate.next_release_label}")
 
-    _render_hn_conversation_starter(conversation_starter)
-
-    # Always show weather — even when the garage is closed.
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
-    _render_weather_panel(weather)
+    st.markdown(_build_weather_html(weather), unsafe_allow_html=True)
+
+    with st.expander("💬 Gym Conversation Starter", expanded=False):
+        st.markdown(_build_hn_html(conversation_starter), unsafe_allow_html=True)
 
 
 def _authenticate_admin(config: AppConfig) -> bool:
