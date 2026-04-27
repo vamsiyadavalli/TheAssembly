@@ -479,17 +479,20 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             if slate.is_preview
             else f"{workout.date} · releases at {workout.release_time}"
         )
-        tips_text = " · ".join(workout.technical_cues) if workout.technical_cues else ""
+        tips_lines = "".join(
+            f'<div style="margin-bottom:0.25rem">{cue}</div>'
+            for cue in workout.technical_cues
+        ) if workout.technical_cues else ""
         tips_html = (
             f'<div style="margin-top:0.75rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
-            f'<div class="section-label" style="margin-bottom:0.2rem">Coach Tips</div>'
-            f'<div style="color:#94a3b8;font-size:0.82rem">{tips_text}</div>'
+            f'<div class="section-label" style="margin-bottom:0.35rem">Coach Tips</div>'
+            f'<div style="color:#e2e8f0;font-size:0.82rem;line-height:1.5">{tips_lines}</div>'
             f'</div>'
-        ) if tips_text else ""
+        ) if tips_lines else ""
         stimulus_html = (
             f'<div style="margin-top:0.75rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
             f'<div class="section-label" style="margin-bottom:0.2rem">Stimulus</div>'
-            f'<div style="color:#94a3b8;font-size:0.82rem">{workout.stimulus}</div>'
+            f'<div style="color:#e2e8f0;font-size:0.82rem">{workout.stimulus}</div>'
             f'</div>'
         ) if workout.stimulus else ""
 
