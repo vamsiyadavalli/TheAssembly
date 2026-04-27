@@ -173,9 +173,11 @@ class GitHubDataRepository:
     _ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
     def fetch_photos(self, target_date: date) -> list[PhotoRecord]:
-        """Return up to 6 PhotoRecords for the given date from the photos folder.
+        """Return up to 6 PhotoRecords from the photos folder.
 
-        Returns an empty list on any error (non-blocking).
+        Accepts all image files regardless of filename convention — photos uploaded
+        directly to GitHub (no date prefix) as well as those uploaded via the admin
+        UI (date-prefixed). Returns an empty list on any error (non-blocking).
         """
         prefix = target_date.isoformat()
         url = self._contents_url(self.config.photos_folder_path)
@@ -204,7 +206,7 @@ class GitHubDataRepository:
             ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
             if entry.get("type") != "file":
                 continue
-            if not name.startswith(prefix):
+            if name == ".gitkeep":
                 continue
             if ext not in self._ALLOWED_EXTENSIONS:
                 continue

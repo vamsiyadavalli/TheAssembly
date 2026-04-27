@@ -683,10 +683,11 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
     if slate.status == "open" and slate.workout is not None:
         workout = slate.workout
+        from datetime import date as _date_today
         weather_date = workout.workout_date.isoformat()
         weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
         joke = _cached_fetch_daily_joke()
-        photos = _fetch_photos_for_date(weather_date)
+        photos = _fetch_photos_for_date(_date_today.today().isoformat())
 
         subtitle = (
             f"{workout.date} · preview available now"
