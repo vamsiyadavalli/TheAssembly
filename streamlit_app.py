@@ -19,14 +19,6 @@ from theassembly.weather import WorkoutWeather, fetch_workout_weather
 from theassembly.workout_formatting import format_workout_html, format_workout_summary
 
 
-st.set_page_config(
-    page_title="TheAssembly",
-    page_icon=":weight_lifter:",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-
 CUSTOM_CSS = """
 <style>
     .stApp {
@@ -707,6 +699,12 @@ def _require_admin_write_access(config: AppConfig) -> None:
 
 
 def main(app_role: AppRole = "athlete") -> None:
+    st.set_page_config(
+        page_title="TheAssembly",
+        page_icon=":weight_lifter:",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
     config = _app_config(app_role)
     _require_admin_write_access(config)
 
