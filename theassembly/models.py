@@ -155,6 +155,15 @@ class CurrentState:
         return {"status": self.status}
 
 
+@dataclass(frozen=True)
+class PhotoRecord:
+    """A single post-workout photo fetched from the GitHub data repo."""
+
+    filename: str
+    data_uri: str
+    date_str: str
+
+
 def ensure_unique_dates(records: Iterable[WorkoutRecord]) -> None:
     seen: set[str] = set()
     duplicates: set[str] = set()
