@@ -133,11 +133,12 @@ class TestFetchPhotos(unittest.TestCase):
             result = repo.fetch_photos(date(2026, 4, 27))
         self.assertEqual([], result)
 
-    def test_filters_by_date_prefix(self) -> None:
+    def test_returns_all_images_regardless_of_date_prefix(self) -> None:
+        """Photos uploaded directly (no date prefix) are returned alongside prefixed ones."""
         repo = _make_repo()
         entries = [
             {"type": "file", "name": "2026-04-27-hero.jpg", "url": "https://api/hero"},
-            {"type": "file", "name": "2026-04-26-other.jpg", "url": "https://api/other"},
+            {"type": "file", "name": "IMG_5041.jpg", "url": "https://api/other"},
         ]
         img_bytes = b"\xff\xd8\xff"  # minimal JPEG magic bytes
         dir_resp = _make_dir_response(entries)
@@ -151,8 +152,7 @@ class TestFetchPhotos(unittest.TestCase):
         with patch("requests.get", side_effect=fake_get):
             result = repo.fetch_photos(date(2026, 4, 27))
 
-        self.assertEqual(1, len(result))
-        self.assertEqual("2026-04-27-hero.jpg", result[0].filename)
+        self.assertEqual(2, len(result))
 
     def test_data_uri_contains_base64_content(self) -> None:
         repo = _make_repo()
