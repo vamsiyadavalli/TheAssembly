@@ -149,7 +149,7 @@ Common values for `APP_TIMEZONE`:
 - Ensure the token has access to the repository (not just your account)
 
 **Athlete app shows Garage Closed unexpectedly**
-- Check the current ET time: Garage Closed is expected 9:01 AM – 3:59 PM ET
+- Check the current ET time: Garage Closed is expected 11:00 AM – 3:59 PM ET
 - Verify `current_state.json` in your data repo contains `{"status": "open"}`
 - Confirm a workout exists for today's date with a `status` of `scheduled` or `released`
 

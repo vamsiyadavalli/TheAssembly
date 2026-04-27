@@ -101,30 +101,27 @@ kubectl apply -k deploy/k8s/overlays/prod
    - Other sensitive config (recommendations: use Sealed Secrets or External Secrets Operator)
 
 3. **TLS Prerequisites** (stage environment only):
-   - Install cert-manager: `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml`
-   - Create cert-manager ClusterIssuer for Let's Encrypt:
-     ```yaml
-     apiVersion: cert-manager.io/v1
-     kind: ClusterIssuer
-     metadata:
-       name: letsencrypt-prod
-     spec:
-       acme:
-         server: https://acme-v02.api.letsencrypt.org/directory
-         email: admin@theassembly.app
-         privateKeySecretRef:
-           name: letsencrypt-prod
-         solvers:
-         - http01:
-             ingress:
-               class: traefik
-     ```
+   - Install cert-manager v1.13.0:
+     - `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml`
+   - Apply staging ClusterIssuer from repo bootstrap:
+     - `kubectl apply -f deploy/k8s/bootstrap/clusterissuer-letsencrypt-staging.yaml`
+   - Verify issuer readiness:
+     - `kubectl get clusterissuer letsencrypt-staging`
 
 4. **Ingress Controller** (stage environment only):
-   - Traefik must be running with IngressClass `traefik` configured
-   - Verify: `kubectl get ingressclass traefik`
+   - Install Traefik from repo bootstrap:
+     - `kubectl apply -f deploy/k8s/bootstrap/traefik-install.yaml`
+   - Verify IngressClass:
+     - `kubectl get ingressclass traefik`
+   - Verify service exposure:
+     - `kubectl get svc -n traefik traefik`
 
-5. **Network Policy Validation**:
+5. **Local cluster TLS note**:
+   - Let's Encrypt HTTP-01 requires publicly reachable DNS/HTTP endpoints.
+   - On local Docker Desktop/Minikube, certificates may remain `pending` unless domains resolve publicly to your cluster.
+   - For local-only testing, use port-forward with HTTP (`kubectl -n traefik port-forward svc/traefik 8080:80`) or use a local CA/self-signed cert instead of Let's Encrypt.
+
+6. **Network Policy Validation**:
    - Confirm NetworkPolicies are active: `kubectl get networkpolicies -n theassembly-apps`
    - Test app→MCP access: `kubectl run -it --rm test --image=busybox -- wget -O- http://mcp-playwright:8931` (from athlete pod)
    - Test external→app access: `kubectl logs -f svc/athlete -n theassembly-apps` to verify ingress routing

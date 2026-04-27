@@ -2,7 +2,86 @@
 
 A privacy-first gym whiteboard built for Streamlit Community Cloud. Athletes see today's workout. You control what's on the board.
 
-> [View architecture diagram →](docs/architecture.mmd)
+## Architecture
+
+```mermaid
+graph TD
+    subgraph GymOwnerSetup["🏋️ Gym Owner Setup Path"]
+        Template["TheAssembly\n(public template repo)\nUse this template ↓"]
+        DataTemplate["TheAssemblyData-template\n(public starter repo)\nUse this template ↓"]
+        GymRepo["YourGymName app repo\n(forked from template)"]
+        GymData["YourGymName-data\n(private — YOUR IP)"]
+        PAT["GitHub PAT\nRead-only → athlete\nRead+Write → admin"]
+        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc."]
+        Template --> GymRepo
+        DataTemplate --> GymData
+        PAT --> StreamlitSecrets
+        GymData -.->|"stays private forever"| GymData
+    end
+
+    subgraph StreamlitCloud["☁️ Streamlit Community Cloud"]
+        AthleteApp["athlete_app.py\nAthlete Portal"]
+        AdminApp["admin_app.py\nOrganizer Portal"]
+    end
+
+    subgraph TheAssembly["📦 TheAssembly — Application Code"]
+        StreamlitApp["streamlit_app.py\nmain() · _render_athlete_view()\n_render_admin_console() · _authenticate_admin()"]
+        subgraph Package["theassembly/"]
+            Config["config.py\nAppConfig · load_config()"]
+            Models["models.py\nWorkoutRecord · CurrentState\nload_workouts() · serialize_workouts()"]
+            GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()"]
+            Schedule["schedule.py\nAthleteSlate · resolve_athlete_slate()\ndetect_logic_window()"]
+        end
+    end
+
+    subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
+        WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
+        StateJSON["current_state.json\n{ status: open | closed }"]
+    end
+
+    subgraph GitHubAPI["🐙 GitHub REST API"]
+        ContentsAPI["GET /repos/:owner/:repo/contents/:path\nPUT /repos/:owner/:repo/contents/:path"]
+    end
+
+    subgraph Secrets["🔑 Secrets / Environment"]
+        Tokens["GITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nGITHUB_TOKEN (fallback)"]
+        RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
+        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE"]
+    end
+
+    subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
+        Overnight["Overnight\n12:00 AM – 10:59 AM\n→ Show today's workout"]
+        Closed["Daytime Closed\n11:00 AM – 3:59 PM\n→ Garage Closed"]
+        Preview["Preview\n4:00 PM – 11:59 PM\n→ Show tomorrow's workout"]
+    end
+
+    subgraph CI["🔄 GitHub Actions"]
+        TestsWF[".github/workflows/tests.yml\nunit tests + ruff lint\non push/PR to dev and master"]
+        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates data repo\ncron + manual dispatch"]
+    end
+
+    GymRepo --> StreamlitCloud
+    StreamlitSecrets --> Secrets
+    AthleteApp -->|"app_role=athlete"| StreamlitApp
+    AdminApp -->|"app_role=admin"| StreamlitApp
+    StreamlitApp --> Config
+    StreamlitApp --> Models
+    StreamlitApp --> GHRepo
+    StreamlitApp --> Schedule
+    GHRepo -->|"HTTP GET/PUT + Bearer token"| ContentsAPI
+    ContentsAPI --> WorkoutsJSON
+    ContentsAPI --> StateJSON
+    Secrets --> Config
+    Secrets --> StreamlitApp
+    Schedule --> TimeLogic
+    CI -->|"reads"| PrivateDataRepo
+```
+
+## App screenshots
+
+**Athlete view** — time-gated slate with weather and daily content:
+
+![Athlete view](docs/screenshots/athlete-app.png)
 
 ---
 
@@ -27,8 +106,8 @@ Your IP stays in your private data repo. TheAssembly just reads it.
 
 | Time window (your timezone) | Athlete view |
 |---|---|
-| 12:00 AM – 9:00 AM | Today's workout (if staged and open) |
-| 9:01 AM – 3:59 PM | **Garage Closed** — auto-wipe, no data shown |
+| 12:00 AM – 10:59 AM | Today's workout (if staged and open) |
+| 11:00 AM – 3:59 PM | **Garage Closed** — auto-wipe, no data shown |
 | 4:00 PM – 11:59 PM | Tomorrow's workout preview (if staged and open) |
 
 ### What you get as organizer

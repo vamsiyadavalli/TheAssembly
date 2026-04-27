@@ -66,11 +66,11 @@ class AthleteSlateTests(unittest.TestCase):
         self.assertEqual("overnight", slate.logic_window)
         self.assertEqual("2026-04-20", slate.workout.date if slate.workout else None)
 
-    def test_overnight_window_stays_open_at_exactly_nine_am(self) -> None:
+    def test_overnight_window_stays_open_at_exactly_ten_fifty_nine_am(self) -> None:
         slate = resolve_athlete_slate(
             [self.today_record, self.tomorrow_record],
             self.current_state,
-            datetime(2026, 4, 20, 13, 0, tzinfo=timezone.utc),
+            datetime(2026, 4, 20, 14, 59, tzinfo=timezone.utc),
             "America/New_York",
         )
 
@@ -92,11 +92,11 @@ class AthleteSlateTests(unittest.TestCase):
         self.assertEqual("2026-04-20", slate.workout.date if slate.workout else None)
         self.assertEqual("overnight", slate.logic_window)
 
-    def test_daytime_window_closes_at_nine_oh_one(self) -> None:
+    def test_daytime_window_closes_at_eleven_oh_one(self) -> None:
         slate = resolve_athlete_slate(
             [self.today_record, self.tomorrow_record],
             self.current_state,
-            datetime(2026, 4, 20, 13, 1, tzinfo=timezone.utc),
+            datetime(2026, 4, 20, 15, 1, tzinfo=timezone.utc),
             "America/New_York",
         )
 
