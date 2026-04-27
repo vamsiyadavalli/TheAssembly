@@ -1,7 +1,10 @@
+import base64
 import unittest
+from datetime import date
+from unittest.mock import MagicMock, patch
 
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
-from theassembly.models import CurrentState, WorkoutRecord
+from theassembly.models import CurrentState, PhotoRecord, WorkoutRecord
 
 
 class GitHubRepositoryTests(unittest.TestCase):
@@ -90,6 +93,127 @@ class GitHubRepositoryTests(unittest.TestCase):
         repository.stage_workout_and_open_state(record)
 
         self.assertEqual(0, repository.state_saves)
+
+
+def _make_repo(photos_folder: str = "photos") -> GitHubDataRepository:
+    return GitHubDataRepository(
+        GitHubRepoConfig(
+            token="tok",
+            owner="owner",
+            repo="repo",
+            workouts_file_path="workouts.json",
+            current_state_file_path="current_state.json",
+            photos_folder_path=photos_folder,
+        )
+    )
+
+
+def _make_dir_response(entries: list[dict]) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = entries
+    return resp
+
+
+def _make_file_response(raw_bytes: bytes, content_type: str = "image/jpeg") -> MagicMock:
+    encoded = base64.b64encode(raw_bytes).decode()
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"content": encoded, "sha": "abc123"}
+    resp.raise_for_status.return_value = None
+    return resp
+
+
+class TestFetchPhotos(unittest.TestCase):
+    def test_returns_empty_on_404(self) -> None:
+        repo = _make_repo()
+        not_found = MagicMock()
+        not_found.status_code = 404
+        with patch("requests.get", return_value=not_found):
+            result = repo.fetch_photos(date(2026, 4, 27))
+        self.assertEqual([], result)
+
+    def test_filters_by_date_prefix(self) -> None:
+        repo = _make_repo()
+        entries = [
+            {"type": "file", "name": "2026-04-27-hero.jpg", "url": "https://api/hero"},
+            {"type": "file", "name": "2026-04-26-other.jpg", "url": "https://api/other"},
+        ]
+        img_bytes = b"\xff\xd8\xff"  # minimal JPEG magic bytes
+        dir_resp = _make_dir_response(entries)
+        file_resp = _make_file_response(img_bytes)
+
+        def fake_get(url, **kwargs):
+            if "contents/photos" in url:
+                return dir_resp
+            return file_resp
+
+        with patch("requests.get", side_effect=fake_get):
+            result = repo.fetch_photos(date(2026, 4, 27))
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("2026-04-27-hero.jpg", result[0].filename)
+
+    def test_data_uri_contains_base64_content(self) -> None:
+        repo = _make_repo()
+        img_bytes = b"\x89PNG\r\n"
+        entries = [{"type": "file", "name": "2026-04-27-snap.png", "url": "https://api/snap"}]
+        dir_resp = _make_dir_response(entries)
+        file_resp = _make_file_response(img_bytes, content_type="image/png")
+
+        def fake_get(url, **kwargs):
+            if "contents/photos" in url:
+                return dir_resp
+            return file_resp
+
+        with patch("requests.get", side_effect=fake_get):
+            result = repo.fetch_photos(date(2026, 4, 27))
+
+        self.assertEqual(1, len(result))
+        self.assertIn("data:image/png;base64,", result[0].data_uri)
+        decoded = base64.b64decode(result[0].data_uri.split(",", 1)[1])
+        self.assertEqual(img_bytes, decoded)
+
+    def test_caps_at_six_photos(self) -> None:
+        repo = _make_repo()
+        entries = [
+            {"type": "file", "name": f"2026-04-27-photo{i:02d}.jpg", "url": f"https://api/p{i}"}
+            for i in range(10)
+        ]
+        img_bytes = b"\xff\xd8\xff"
+        dir_resp = _make_dir_response(entries)
+        file_resp = _make_file_response(img_bytes)
+
+        def fake_get(url, **kwargs):
+            if "contents/photos" in url:
+                return dir_resp
+            return file_resp
+
+        with patch("requests.get", side_effect=fake_get):
+            result = repo.fetch_photos(date(2026, 4, 27))
+
+        self.assertEqual(6, len(result))
+
+    def test_skips_non_image_extensions(self) -> None:
+        repo = _make_repo()
+        entries = [
+            {"type": "file", "name": "2026-04-27-notes.txt", "url": "https://api/notes"},
+            {"type": "file", "name": "2026-04-27-photo.jpg", "url": "https://api/photo"},
+        ]
+        img_bytes = b"\xff\xd8\xff"
+        dir_resp = _make_dir_response(entries)
+        file_resp = _make_file_response(img_bytes)
+
+        def fake_get(url, **kwargs):
+            if "contents/photos" in url:
+                return dir_resp
+            return file_resp
+
+        with patch("requests.get", side_effect=fake_get):
+            result = repo.fetch_photos(date(2026, 4, 27))
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("2026-04-27-photo.jpg", result[0].filename)
 
 
 if __name__ == "__main__":
