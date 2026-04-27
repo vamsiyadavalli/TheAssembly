@@ -506,7 +506,13 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>'
         )
 
-        col_side = _build_weather_html(weather)
+        col_side = (
+            _build_weather_html(weather)
+            + f'<div class="panel-card" style="margin-top:0.75rem">'
+            f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
+            f'{_build_hn_html(conversation_starter)}'
+            f'</div>'
+        )
 
         st.markdown(
             f'<div class="page-grid">'
@@ -515,9 +521,6 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>',
             unsafe_allow_html=True,
         )
-
-        with st.expander("💬 Gym Conversation Starter", expanded=False):
-            st.markdown(_build_hn_html(conversation_starter), unsafe_allow_html=True)
         return
 
     # Garage closed — single column.
@@ -535,10 +538,14 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
-    st.markdown(_build_weather_html(weather), unsafe_allow_html=True)
-
-    with st.expander("💬 Gym Conversation Starter", expanded=False):
-        st.markdown(_build_hn_html(conversation_starter), unsafe_allow_html=True)
+    st.markdown(
+        _build_weather_html(weather)
+        + f'<div class="panel-card" style="margin-top:0.75rem">'
+        f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
+        f'{_build_hn_html(conversation_starter)}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _authenticate_admin(config: AppConfig) -> bool:
