@@ -571,14 +571,16 @@ def _build_joke_html(joke: DailyJoke | None) -> str:
     )
 
 
-def _build_photos_html(photos: list[PhotoRecord]) -> str:
-    """Return an HTML panel card for the post-workout photo gallery.
+def _build_photos_html(photos: list[PhotoRecord]) -> tuple[str, str]:
+    """Return (html, dynamic_css) for the post-workout photo gallery panel.
 
-    Returns an empty string when there are no photos so the panel is silently omitted.
+    Returns ("", "") when there are no photos so the panel is silently omitted.
     One photo: static image. Two or more: CSS-only crossfade slideshow.
+    The dynamic_css must be injected via a separate st.markdown("<style>…</style>")
+    call BEFORE the page-grid markdown, otherwise Streamlit strips <style> tags.
     """
     if not photos:
-        return ""
+        return "", ""
 
     label = '<div class="weather-section-label" style="margin-bottom:0.6rem">📸 Post-Workout Shots</div>'
 
@@ -586,20 +588,19 @@ def _build_photos_html(photos: list[PhotoRecord]) -> str:
         img_html = (
             f'<img src="{photos[0].data_uri}" '
             f'style="width:100%;border-radius:10px;display:block" '
-            f'alt="{photos[0].filename}">'
+            f'alt="">'
         )
         return (
             f'<div class="panel-card" style="margin-top:0.75rem">'
             f'{label}'
             f'{img_html}'
             f'</div>'
-        )
+        ), ""
 
     # Build per-photo keyframe rules: each photo is visible for 8 s, then fades out.
     n = len(photos)
     hold_pct = round(100 / n, 2)
     fade_pct = round(hold_pct + 5, 2)
-    # Inline <style> because nth-child delays depend on runtime count.
     style_rules = ""
     for idx in range(n):
         delay = idx * 8
@@ -611,11 +612,12 @@ def _build_photos_html(photos: list[PhotoRecord]) -> str:
         f"{fade_pct}%{{opacity:0}}"
         f"100%{{opacity:0}}}}"
     )
+    dynamic_css = keyframe + style_rules
     total_duration = n * 8
 
     slides_html = "".join(
         f'<div class="photo-slide" style="animation:{total_duration}s photo-fade{n} infinite">'
-        f'<img src="{p.data_uri}" alt="{p.filename}">'
+        f'<img src="{p.data_uri}" alt="">'
         f'</div>'
         for p in photos
     )
@@ -623,10 +625,9 @@ def _build_photos_html(photos: list[PhotoRecord]) -> str:
     return (
         f'<div class="panel-card" style="margin-top:0.75rem">'
         f'{label}'
-        f'<style>{keyframe}{style_rules}</style>'
         f'<div class="photo-slideshow">{slides_html}</div>'
         f'</div>'
-    )
+    ), dynamic_css
 
 
 def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | None) -> str:
@@ -726,19 +727,22 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>'
         )
 
+        col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
         col_side = (
             _build_weather_html(weather)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
             f'</div>'
-            + _build_photos_html(photos)
+            + col_side_photos_html
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
             f'{_build_hn_html(conversation_starter)}'
             f'</div>'
         )
 
+        if col_side_photos_css:
+            st.markdown(f"<style>{col_side_photos_css}</style>", unsafe_allow_html=True)
         st.markdown(
             f'<div class="page-grid">'
             f'<div class="col-main">{col_main}</div>'
@@ -770,19 +774,22 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         f'</div>'
     )
 
+    closed_photos_html, closed_photos_css = _build_photos_html(photos)
     closed_side = (
         _build_weather_html(weather)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
         f'{_build_joke_html(joke)}'
         f'</div>'
-        + _build_photos_html(photos)
+        + closed_photos_html
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
         f'{_build_hn_html(conversation_starter)}'
         f'</div>'
     )
 
+    if closed_photos_css:
+        st.markdown(f"<style>{closed_photos_css}</style>", unsafe_allow_html=True)
     st.markdown(
         f'<div class="page-grid">'
         f'<div class="col-main">{closed_main}</div>'
