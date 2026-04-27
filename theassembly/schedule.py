@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -72,6 +73,7 @@ def detect_logic_window(
     now_local: datetime,
     daytime_close_start: time = DAYTIME_CLOSE_START,
     preview_start_time: time = PREVIEW_START_TIME,
+    force_open_until: date | None = None,
 ) -> tuple[str, date | None, bool]:
     local_date = now_local.date()
     local_time = now_local.time().replace(tzinfo=None)
@@ -85,6 +87,8 @@ def detect_logic_window(
         return "overnight", local_date, False
 
     if local_time >= daytime_close_start:
+        if force_open_until is not None and local_date <= force_open_until:
+            return "overnight", local_date, False
         return "closed", None, False
 
     return "overnight", now_local.date(), False
@@ -100,7 +104,9 @@ def resolve_athlete_slate(
 ) -> AthleteSlate:
     now_local = _to_local(now, timezone_name)
     next_release_label = _next_release_label(records, now_local, wipe_time, preview_time)
-    logic_window, target_date, is_preview = detect_logic_window(now_local, wipe_time, preview_time)
+    force_open_until_str = os.environ.get("FORCE_OPEN_UNTIL")
+    force_open_until = date.fromisoformat(force_open_until_str) if force_open_until_str else None
+    logic_window, target_date, is_preview = detect_logic_window(now_local, wipe_time, preview_time, force_open_until)
 
     if logic_window == "closed":
         return AthleteSlate(

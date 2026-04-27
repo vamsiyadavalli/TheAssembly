@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import os
 import unittest
 
 from theassembly.models import CurrentState, WorkoutRecord
-from theassembly.schedule import resolve_athlete_slate
+from theassembly.schedule import detect_logic_window, resolve_athlete_slate
 
 
 class AthleteSlateTests(unittest.TestCase):
@@ -156,6 +157,39 @@ class AthleteSlateTests(unittest.TestCase):
 
         self.assertEqual("closed", slate.status)
         self.assertEqual("Tomorrow's workout has not been staged yet.", slate.message)
+
+
+    def test_force_open_override_keeps_open_at_noon_et(self) -> None:
+        # Noon ET (16:00 UTC) would normally be "closed" — override keeps it "overnight" (open)
+        # force_open_until is today's date in the test scenario (2026-04-20)
+        import pytz
+        noon_et = pytz.timezone("America/New_York").localize(datetime(2026, 4, 20, 12, 0, 0))
+        window, target_date, is_preview = detect_logic_window(
+            noon_et, force_open_until=date(2026, 4, 20)
+        )
+        self.assertEqual("overnight", window)
+        self.assertFalse(is_preview)
+        self.assertEqual(date(2026, 4, 20), target_date)
+
+    def test_force_open_override_at_4pm_returns_preview(self) -> None:
+        # 4:00 PM ET is already handled by the preview branch regardless of override
+        import pytz
+        four_pm_et = pytz.timezone("America/New_York").localize(datetime(2026, 4, 20, 16, 0, 0))
+        window, target_date, is_preview = detect_logic_window(
+            four_pm_et, force_open_until=date(2026, 4, 20)
+        )
+        self.assertEqual("preview", window)
+        self.assertTrue(is_preview)
+
+    def test_force_open_override_expired_returns_closed(self) -> None:
+        # Override date is yesterday — should fall through to normal "closed" window
+        import pytz
+        noon_et = pytz.timezone("America/New_York").localize(datetime(2026, 4, 20, 12, 0, 0))
+        window, target_date, is_preview = detect_logic_window(
+            noon_et, force_open_until=date(2026, 4, 19)
+        )
+        self.assertEqual("closed", window)
+        self.assertFalse(is_preview)
 
 
 if __name__ == "__main__":
