@@ -1,4 +1,3 @@
 import streamlit_app
 
-if __name__ == "__main__":
-    streamlit_app.main(app_role="admin")
+streamlit_app.main(app_role="admin")

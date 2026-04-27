@@ -34,6 +34,7 @@ class Movement:
     rx_weight: str = ""
     scaled_weight: str = ""
     notes: str = ""
+    section: str = ""
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Movement":
@@ -47,6 +48,7 @@ class Movement:
             rx_weight=str(normalized.get("rx_weight", "")).strip(),
             scaled_weight=str(normalized.get("scaled_weight", "")).strip(),
             notes=str(normalized.get("notes", "")).strip(),
+            section=str(normalized.get("section", "")).strip(),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -59,6 +61,8 @@ class Movement:
             result["scaled_weight"] = self.scaled_weight
         if self.notes:
             result["notes"] = self.notes
+        if self.section:
+            result["section"] = self.section
         return result
 
 
