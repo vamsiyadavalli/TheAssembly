@@ -217,7 +217,7 @@ class GitHubDataRepository:
                 )
                 file_response.raise_for_status()
                 file_data = file_response.json()
-                raw_content = file_data.get("content", "")
+                raw_content = file_data.get("content", "").replace("\n", "").strip()
                 raw_bytes = base64.b64decode(raw_content)
                 mime = mimetypes.guess_type(entry["name"])[0] or "image/jpeg"
                 data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode()}"
