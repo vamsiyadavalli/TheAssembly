@@ -14,7 +14,7 @@ import streamlit as st
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
 from theassembly.hn_topics import HNConversationStarter, fetch_hn_conversation_starter
 from theassembly.jokes import DailyJoke, fetch_daily_joke
-from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
+from theassembly.models import CurrentState, PhotoRecord, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
 from theassembly.workout_formatting import format_workout_html, format_workout_summary
@@ -244,6 +244,25 @@ CUSTOM_CSS = """
         font-weight: 600;
         white-space: nowrap;
     }
+    /* ---- Photo slideshow ---- */
+    .photo-slideshow {
+        position: relative;
+        overflow: hidden;
+        border-radius: 10px;
+        aspect-ratio: 4 / 3;
+        background: rgba(15, 23, 42, 0.5);
+    }
+    .photo-slide {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+    }
+    .photo-slide img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 10px;
+    }
 </style>
 """
 
@@ -269,6 +288,7 @@ class AppConfig:
     admin_enabled: bool
     gym_lat: float
     gym_lon: float
+    photos_folder_path: str
 
 
 def _secret_or_env(key: str, default: str | None = None) -> str | None:
@@ -350,6 +370,7 @@ def _app_config(app_role: AppRole = "athlete") -> AppConfig:
         admin_enabled=bool(admin_password),
         gym_lat=_parse_coord("GYM_LAT", 39.3448),
         gym_lon=_parse_coord("GYM_LON", -77.3241),
+        photos_folder_path=_secret_or_env("PHOTOS_FOLDER_PATH", "photos") or "photos",
     )
 
 
@@ -364,6 +385,7 @@ def _build_repository(config: AppConfig) -> GitHubDataRepository | None:
         workouts_file_path=config.workouts_file_path,
         current_state_file_path=config.current_state_file_path,
         branch=config.workouts_repo_branch,
+        photos_folder_path=config.photos_folder_path,
     )
     return GitHubDataRepository(repo_config)
 
@@ -421,6 +443,30 @@ def _cached_fetch_hn_conversation_starter() -> HNConversationStarter | None:
 @st.cache_data(ttl=3600)
 def _cached_fetch_daily_joke() -> DailyJoke | None:
     return fetch_daily_joke()
+
+
+@st.cache_data(ttl=600)
+def _cached_fetch_photos(
+    target_date_iso: str,
+    github_token: str,
+    owner: str,
+    repo: str,
+    branch: str,
+    photos_folder_path: str,
+) -> list[PhotoRecord]:
+    from datetime import date as _date
+    from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
+    repo_config = GitHubRepoConfig(
+        token=github_token,
+        owner=owner,
+        repo=repo,
+        workouts_file_path="workouts.json",
+        current_state_file_path="current_state.json",
+        branch=branch,
+        photos_folder_path=photos_folder_path,
+    )
+    repository = GitHubDataRepository(repo_config)
+    return repository.fetch_photos(_date.fromisoformat(target_date_iso))
 
 
 def _school_dress_hint(weather: WorkoutWeather) -> str:
@@ -525,6 +571,64 @@ def _build_joke_html(joke: DailyJoke | None) -> str:
     )
 
 
+def _build_photos_html(photos: list[PhotoRecord]) -> str:
+    """Return an HTML panel card for the post-workout photo gallery.
+
+    Returns an empty string when there are no photos so the panel is silently omitted.
+    One photo: static image. Two or more: CSS-only crossfade slideshow.
+    """
+    if not photos:
+        return ""
+
+    label = '<div class="weather-section-label" style="margin-bottom:0.6rem">📸 Post-Workout Shots</div>'
+
+    if len(photos) == 1:
+        img_html = (
+            f'<img src="{photos[0].data_uri}" '
+            f'style="width:100%;border-radius:10px;display:block" '
+            f'alt="{photos[0].filename}">'
+        )
+        return (
+            f'<div class="panel-card" style="margin-top:0.75rem">'
+            f'{label}'
+            f'{img_html}'
+            f'</div>'
+        )
+
+    # Build per-photo keyframe rules: each photo is visible for 4 s, then fades out.
+    n = len(photos)
+    hold_pct = round(100 / n, 2)
+    fade_pct = round(hold_pct + 5, 2)
+    # Inline <style> because nth-child delays depend on runtime count.
+    style_rules = ""
+    for idx in range(n):
+        delay = idx * 4
+        style_rules += f".photo-slide:nth-child({idx + 1}){{animation-delay:{delay}s}}"
+    keyframe = (
+        f"@keyframes photo-fade{n}"
+        f"{{0%{{opacity:1}}"
+        f"{hold_pct}%{{opacity:1}}"
+        f"{fade_pct}%{{opacity:0}}"
+        f"100%{{opacity:0}}}}"
+    )
+    total_duration = n * 4
+
+    slides_html = "".join(
+        f'<div class="photo-slide" style="animation:{total_duration}s photo-fade{n} infinite">'
+        f'<img src="{p.data_uri}" alt="{p.filename}">'
+        f'</div>'
+        for p in photos
+    )
+
+    return (
+        f'<div class="panel-card" style="margin-top:0.75rem">'
+        f'{label}'
+        f'<style>{keyframe}{style_rules}</style>'
+        f'<div class="photo-slideshow">{slides_html}</div>'
+        f'</div>'
+    )
+
+
 def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | None) -> str:
     """Build a short friendly pre-workout caption from workout structure and weather."""
     content = workout.workout_content.lower()
@@ -564,11 +668,24 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     # Pre-fetch both async data sources before building HTML.
     conversation_starter = _cached_fetch_hn_conversation_starter()
 
+    def _fetch_photos_for_date(date_iso: str) -> list[PhotoRecord]:
+        if not config.github_enabled or not config.github_token:
+            return []
+        return _cached_fetch_photos(
+            date_iso,
+            config.github_token,
+            config.workouts_repo_owner,
+            config.workouts_repo_name,
+            config.workouts_repo_branch,
+            config.photos_folder_path,
+        )
+
     if slate.status == "open" and slate.workout is not None:
         workout = slate.workout
         weather_date = workout.workout_date.isoformat()
         weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
         joke = _cached_fetch_daily_joke()
+        photos = _fetch_photos_for_date(weather_date)
 
         subtitle = (
             f"{workout.date} · preview available now"
@@ -611,6 +728,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
         col_side = (
             _build_weather_html(weather)
+            + _build_photos_html(photos)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
@@ -635,6 +753,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     today_iso = _date.today().isoformat()
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
     joke = _cached_fetch_daily_joke()
+    photos = _fetch_photos_for_date(today_iso)
 
     next_release_html = (
         f'<div style="margin-top:0.5rem;color:#64748b;font-size:0.8rem">'
@@ -653,6 +772,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
     closed_side = (
         _build_weather_html(weather)
+        + _build_photos_html(photos)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
         f'{_build_joke_html(joke)}'
@@ -819,6 +939,38 @@ def _render_admin_console(
                 st.error(str(exc))
             else:
                 st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
+
+    # ---- Upload Workout Photos ----
+    st.subheader("Upload Workout Photos")
+    st.caption(
+        f"Photos are stored in `{config.photos_folder_path}/` in the data repo. "
+        "Name format after upload: `YYYY-MM-DD-<original_filename>`. "
+        "Supports JPG and PNG, max 6 photos per day shown on the portal."
+    )
+    from datetime import date as _today_date
+    photo_date = st.date_input("Photo date", value=_today_date.today(), key="photo_upload_date")
+    uploaded_files = st.file_uploader(
+        "Select photos",
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=True,
+        key="photo_upload_files",
+    )
+    if st.button("Upload Photos", disabled=not uploaded_files, use_container_width=True):
+        success_count = 0
+        for uploaded_file in uploaded_files:
+            try:
+                repository.upload_photo(
+                    photo_date.isoformat(),
+                    uploaded_file.name,
+                    uploaded_file.read(),
+                )
+                st.success(f"✅ Uploaded `{uploaded_file.name}`")
+                success_count += 1
+            except RuntimeError as exc:
+                st.error(f"❌ Failed to upload `{uploaded_file.name}`: {exc}")
+        if success_count:
+            _cached_fetch_photos.clear()
+            st.info("Photo cache cleared — the gallery will show the new photos on next load.")
 
 
 def _require_admin_write_access(config: AppConfig) -> None:
