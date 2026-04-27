@@ -10,7 +10,7 @@ from theassembly.models import CurrentState, WorkoutRecord
 APP_TIMEZONE_NAME = "America/New_York"
 APP_TIMEZONE = pytz.timezone(APP_TIMEZONE_NAME)
 PREVIEW_START_TIME = time(hour=16, minute=0)
-DAYTIME_CLOSE_START = time(hour=9, minute=1)
+DAYTIME_CLOSE_START = time(hour=11, minute=0)
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ def detect_logic_window(
         return "preview", now_local.date() + timedelta(days=1), True
 
     overnight_start = time(0, 0)
-    overnight_end = time(9, 0)
+    overnight_end = time(10, 59)
     if overnight_start <= local_time <= overnight_end:
         return "overnight", local_date, False
 
