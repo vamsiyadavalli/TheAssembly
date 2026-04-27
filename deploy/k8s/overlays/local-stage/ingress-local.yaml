@@ -1,18 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: stage-ingress
+  name: local-stage-ingress
   namespace: theassembly-apps
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-staging
-    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
-  tls:
-  - hosts:
-    - stage-asm-athlete.theassembly.app
-    - stage-asm-control.theassembly.app
-    secretName: stage-tls-cert
   rules:
   - host: stage-asm-athlete.theassembly.app
     http:
