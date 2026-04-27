@@ -16,6 +16,7 @@ from theassembly.hn_topics import HNConversationStarter, fetch_hn_conversation_s
 from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
+from theassembly.workout_formatting import format_workout_html, format_workout_summary
 
 
 st.set_page_config(
@@ -95,6 +96,77 @@ CUSTOM_CSS = """
         line-height: 1.55;
         color: #e2e8f0;
     }
+    /* ---- Structured movements ---- */
+    .workout-structured-header {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #e2e8f0;
+        margin-bottom: 0.7rem;
+    }
+    .workout-legacy {
+        font-size: 1.05rem;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        color: #e2e8f0;
+    }
+    .movement-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.25rem;
+        font-size: 1rem;
+    }
+    .movement-table thead tr {
+        border-bottom: 1px solid rgba(248, 250, 252, 0.12);
+    }
+    .movement-table th {
+        text-align: left;
+        padding: 0.35rem 0.6rem;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: #94a3b8;
+        font-weight: 600;
+    }
+    .movement-table td {
+        padding: 0.45rem 0.6rem;
+        border-bottom: 1px solid rgba(248, 250, 252, 0.05);
+        vertical-align: middle;
+        color: #e2e8f0;
+    }
+    .movement-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    .mvmt-reps {
+        width: 4.5rem;
+        font-weight: 600;
+        color: #fb923c;
+    }
+    .mvmt-name { font-weight: 600; }
+    .mvmt-rx, .mvmt-scaled { width: 7rem; }
+    .mvmt-notes { color: #94a3b8; font-size: 0.9rem; }
+    .rx-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        background: rgba(16, 185, 129, 0.18);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: #6ee7b7;
+        font-size: 0.88rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .scaled-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        color: #fcd34d;
+        font-size: 0.88rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .weight-none { color: #475569; font-size: 0.85rem; }
 </style>
 """
 
@@ -367,7 +439,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         st.write("")
         st.markdown('<div class="section-label">Workout Content</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="panel-card workout-block">{workout.workout_content}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="panel-card workout-block">{format_workout_html(workout)}</div>', unsafe_allow_html=True)
         st.write("")
         st.markdown('<div class="section-label">Stimulus</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="panel-card">{workout.stimulus}</div>', unsafe_allow_html=True)
@@ -433,8 +505,9 @@ def _render_record_list(records: list[WorkoutRecord], heading: str, query: str) 
     lowered_query = query.strip().lower()
     visible_records = []
     for record in sorted(records, key=lambda item: item.date, reverse=True):
+        movement_names = " ".join(m.name for m in record.movements)
         searchable_text = " ".join(
-            [record.date, record.release_time, record.workout_content, record.stimulus, " ".join(record.technical_cues)]
+            [record.date, record.release_time, record.workout_content, record.stimulus, " ".join(record.technical_cues), movement_names]
         ).lower()
         if not lowered_query or lowered_query in searchable_text:
             visible_records.append(record)
@@ -445,16 +518,18 @@ def _render_record_list(records: list[WorkoutRecord], heading: str, query: str) 
 
     table_rows = []
     for record in visible_records:
-        table_rows.append(
-            {
-                "date": record.date,
-                "release_time": record.release_time,
-                "status": record.status,
-                "stimulus": record.stimulus,
-                "technical_cues": " | ".join(record.technical_cues),
-                "content": record.workout_content,
-            }
-        )
+        row: dict[str, str] = {
+            "date": record.date,
+            "release_time": record.release_time,
+            "status": record.status,
+            "stimulus": record.stimulus,
+            "technical_cues": " | ".join(record.technical_cues),
+            "content": format_workout_summary(record),
+        }
+        if record.movements:
+            row["rx"] = " / ".join(m.rx_weight for m in record.movements if m.rx_weight) or "—"
+            row["scaled"] = " / ".join(m.scaled_weight for m in record.movements if m.scaled_weight) or "—"
+        table_rows.append(row)
 
     st.dataframe(table_rows, use_container_width=True, hide_index=True)
 
@@ -493,29 +568,63 @@ def _render_admin_console(
     with st.form("stage-workout"):
         workout_date = st.date_input("Workout date")
         release_time = st.time_input("Release time")
-        workout_content = st.text_area("Workout content", height=180)
+        workout_content = st.text_area(
+            "Workout content",
+            height=180,
+            help="Free-text description or format header (e.g. '5 Rounds for Time'). Shown above the movement table when Movements JSON is provided.",
+        )
         stimulus = st.text_area("Stimulus", height=90)
         technical_cues = st.text_area("Technical cues", height=120, help="One cue per line.")
+        movements_json = st.text_area(
+            "Movements (JSON — optional)",
+            height=200,
+            help=(
+                "Structured movement list with Rx and Scaled weights. Leave blank for legacy text-only layout.\n\n"
+                "Example:\n"
+                '[{"name": "DB Snatches", "reps": "15", "rx_weight": "55 lbs", "scaled_weight": "35 lbs"},\n'
+                ' {"name": "200m Run", "reps": "1"}]'
+            ),
+        )
         status = st.selectbox("Status", ["scheduled", "released", "archived"])
         submitted = st.form_submit_button("Stage New Workout", use_container_width=True)
 
     if submitted:
-        record = WorkoutRecord.from_dict(
-            {
-                "date": workout_date.isoformat(),
-                "release_time": release_time.strftime("%H:%M"),
-                "content": workout_content,
-                "stimulus": stimulus,
-                "technical_cues": technical_cues,
-                "status": status,
-            }
-        )
+        import json as _json
+
+        record_dict: dict = {
+            "date": workout_date.isoformat(),
+            "release_time": release_time.strftime("%H:%M"),
+            "content": workout_content,
+            "stimulus": stimulus,
+            "technical_cues": technical_cues,
+            "status": status,
+        }
+        if movements_json.strip():
+            try:
+                parsed_movements = _json.loads(movements_json.strip())
+            except _json.JSONDecodeError as exc:
+                st.error(f"Movements JSON is invalid: {exc}")
+                parsed_movements = None
+            if parsed_movements is not None:
+                record_dict["movements"] = parsed_movements
+
         try:
-            repository.stage_workout_and_open_state(record)
-        except RuntimeError as exc:
+            record = WorkoutRecord.from_dict(record_dict)
+        except ValueError as exc:
             st.error(str(exc))
-        else:
-            st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
+            record = None
+
+        if record is not None:
+            if record.movements:
+                st.markdown('<div class="section-label">Workout Preview</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="panel-card workout-block">{format_workout_html(record)}</div>', unsafe_allow_html=True)
+                st.write("")
+            try:
+                repository.stage_workout_and_open_state(record)
+            except RuntimeError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
 
 
 def _require_admin_write_access(config: AppConfig) -> None:
