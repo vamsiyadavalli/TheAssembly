@@ -465,8 +465,9 @@ def _build_weather_html(weather: WorkoutWeather | None) -> str:
 
     school_dress = _school_dress_hint(weather)
     school_dress_html = (
-        f'<div style="margin-top:0.4rem;font-size:0.78rem;color:#94a3b8;padding-left:0.9rem">'
-        f'🎒 {school_dress}'
+        f'<div style="margin-top:0.75rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
+        f'<div class="weather-section-label" style="margin-bottom:0.3rem">👕 Dress for the Day</div>'
+        f'<div style="font-size:0.82rem;color:#cbd5e1;line-height:1.5">🎒 {school_dress}</div>'
         f'</div>'
     ) if school_dress else ""
 
@@ -540,7 +541,7 @@ def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | 
                 weather_feel = "hot"
 
     if "partner" in content or "pair" in content or "team" in content:
-        return "Your partner is your pace car today — lean on each other."
+        return "Partner in Pain — your partner is your pace car today. Lean on each other."
     if has_finisher:
         return "There's a finisher at the end. Pace yourself, then let it rip."
     if "amrap" in content:
@@ -629,23 +630,28 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         return
 
-    # Garage closed — single column.
-    st.markdown(
-        f'<div class="hero-card">'
-        f'<div class="eyebrow">Athlete View</div>'
-        f'<div class="garage-closed">{slate.heading}</div>'
-        f'<div>{slate.message}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    if slate.next_release_label:
-        st.caption(f"Next scheduled release: {slate.next_release_label}")
-
+    # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
     joke = _cached_fetch_daily_joke()
-    st.markdown(
+
+    next_release_html = (
+        f'<div style="margin-top:0.5rem;color:#64748b;font-size:0.8rem">'
+        f'Next scheduled release: {slate.next_release_label}'
+        f'</div>'
+    ) if slate.next_release_label else ""
+
+    closed_main = (
+        f'<div class="hero-card">'
+        f'<div class="eyebrow">Athlete View</div>'
+        f'<div class="garage-closed">{slate.heading}</div>'
+        f'<div>{slate.message}</div>'
+        f'{next_release_html}'
+        f'</div>'
+    )
+
+    closed_side = (
         _build_weather_html(weather)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
@@ -654,6 +660,13 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
         f'{_build_hn_html(conversation_starter)}'
+        f'</div>'
+    )
+
+    st.markdown(
+        f'<div class="page-grid">'
+        f'<div class="col-main">{closed_main}</div>'
+        f'<div class="col-side">{closed_side}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
