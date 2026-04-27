@@ -1,0 +1,82 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ingress-local.yaml
+
+# Remove the TLS ingress that cert-manager owns (HTTP-only for local)
+patches:
+  # athlete: local image, Never pull, single replica
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: athlete
+      namespace: theassembly-apps
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: theassembly:local
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+
+  # admin: local image, Never pull, single replica
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: admin
+      namespace: theassembly-apps
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: theassembly:local
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+
+  # MCP: zero out — no real images exist yet
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: mcp-playwright
+      namespace: theassembly-mcp
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: mcp-pyright
+      namespace: theassembly-mcp
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+
+  # Delete the TLS stage ingress — replaced by ingress-local.yaml above
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: stage-ingress
+      namespace: theassembly-apps
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: stage-ingress
+        namespace: theassembly-apps
