@@ -13,6 +13,7 @@ import streamlit as st
 
 from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
 from theassembly.hn_topics import HNConversationStarter, fetch_hn_conversation_starter
+from theassembly.jokes import DailyJoke, fetch_daily_joke
 from theassembly.models import CurrentState, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
@@ -68,6 +69,15 @@ CUSTOM_CSS = """
         text-transform: uppercase;
         letter-spacing: 0.08em;
         margin-bottom: 0.45rem;
+    }
+    .workout-caption {
+        color: #fb923c;
+        font-size: 0.9rem;
+        font-style: italic;
+        margin-bottom: 0.85rem;
+        line-height: 1.45;
+        border-left: 3px solid rgba(251, 146, 60, 0.4);
+        padding-left: 0.65rem;
     }
     .clothing-rec {
         border-left: 3px solid rgba(251, 146, 60, 0.6);
@@ -408,6 +418,32 @@ def _cached_fetch_hn_conversation_starter() -> HNConversationStarter | None:
     return fetch_hn_conversation_starter()
 
 
+@st.cache_data(ttl=3600)
+def _cached_fetch_daily_joke() -> DailyJoke | None:
+    return fetch_daily_joke()
+
+
+def _school_dress_hint(weather: WorkoutWeather) -> str:
+    """Return a compact school-day outfit suggestion derived from morning conditions."""
+    ref = next((h for h in weather.hours if h.hour == 6), None)
+    if ref is None:
+        ref = weather.hours[0] if weather.hours else None
+    if ref is None:
+        return ""
+    feels = ref.feels_like
+    if feels < 35:
+        return "For school: heavy coat, hat & gloves — stays cold all day."
+    if feels < 45:
+        return "For school: insulated jacket, layer up underneath."
+    if feels < 55:
+        return "For school: light jacket or hoodie — might warm by lunch."
+    if feels < 65:
+        return "For school: hoodie works — you can tie it around your waist later."
+    if feels < 75:
+        return "For school: t-shirt and shorts should be just right."
+    return "For school: light and breathable all day."
+
+
 def _build_weather_html(weather: WorkoutWeather | None) -> str:
     """Return a self-contained HTML string for the weather side panel."""
     if weather is None:
@@ -427,11 +463,19 @@ def _build_weather_html(weather: WorkoutWeather | None) -> str:
             f'</div>'
         )
 
+    school_dress = _school_dress_hint(weather)
+    school_dress_html = (
+        f'<div style="margin-top:0.4rem;font-size:0.78rem;color:#94a3b8;padding-left:0.9rem">'
+        f'🎒 {school_dress}'
+        f'</div>'
+    ) if school_dress else ""
+
     return (
         f'<div class="panel-card">'
         f'<div class="weather-section-label">Dress for the Session · 5–8am</div>'
         f'<div class="weather-strip">{cards}</div>'
         f'<div class="clothing-rec">{weather.clothing_recommendation}</div>'
+        f'{school_dress_html}'
         f'</div>'
     )
 
@@ -462,6 +506,56 @@ def _build_hn_html(starter: HNConversationStarter | None) -> str:
     )
 
 
+def _build_joke_html(joke: DailyJoke | None) -> str:
+    """Return HTML for the Joke of the Day card body."""
+    from html import escape as _esc
+    if joke is None:
+        return '<span style="color:#94a3b8">No joke today — but you showed up. That\'s the punchline. 💪</span>'
+    return (
+        f'<div style="color:#e2e8f0;font-size:0.85rem;line-height:1.5;margin-bottom:0.55rem">'
+        f'{_esc(joke.setup)}'
+        f'</div>'
+        f'<div style="color:#fb923c;font-size:0.85rem;font-weight:600;line-height:1.4">'
+        f'{_esc(joke.delivery)}'
+        f'</div>'
+        f'<div style="margin-top:0.45rem;color:#64748b;font-size:0.75rem">'
+        f'{_esc(joke.category)}'
+        f'</div>'
+    )
+
+
+def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | None) -> str:
+    """Build a short friendly pre-workout caption from workout structure and weather."""
+    content = workout.workout_content.lower()
+    has_finisher = any(m.section.lower() == "finisher" for m in workout.movements)
+    movement_count = len(workout.movements)
+
+    weather_feel = ""
+    if weather:
+        ref = next((h for h in weather.hours if h.hour == 6), None)
+        if ref:
+            if ref.feels_like < 40:
+                weather_feel = "cold"
+            elif ref.feels_like > 75:
+                weather_feel = "hot"
+
+    if "partner" in content or "pair" in content or "team" in content:
+        return "Your partner is your pace car today — lean on each other."
+    if has_finisher:
+        return "There's a finisher at the end. Pace yourself, then let it rip."
+    if "amrap" in content:
+        return "Every rep counts. Find your flow and keep the clock moving."
+    if "for time" in content:
+        return "Chase the clock — but pace the first round like you mean it."
+    if movement_count >= 5:
+        return "Long one today. Find a rhythm early and trust the process."
+    if weather_feel == "cold":
+        return "Cold outside — warm up well, your body will thank you mid-WOD."
+    if weather_feel == "hot":
+        return "It's warm out there. Pace yourself early — the heat is part of the workout."
+    return "Show up, give your best, and leave it all on the floor."
+
+
 def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.title("TheAssembly")
@@ -473,12 +567,16 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         workout = slate.workout
         weather_date = workout.workout_date.isoformat()
         weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
+        joke = _cached_fetch_daily_joke()
 
         subtitle = (
             f"{workout.date} · preview available now"
             if slate.is_preview
             else f"{workout.date} · releases at {workout.release_time}"
         )
+        from html import escape as _esc
+        caption_text = workout.caption if workout.caption else _generate_workout_caption(workout, weather)
+        caption_html = f'<div class="workout-caption">{_esc(caption_text)}</div>' if caption_text else ""
         tips_lines = "".join(
             f'<div style="margin-bottom:0.25rem">{cue}</div>'
             for cue in workout.technical_cues
@@ -503,6 +601,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'<div style="color:#94a3b8;font-size:0.85rem;margin-top:0.2rem">{subtitle}</div>'
             f'</div>'
             f'<div class="panel-card workout-block">'
+            f'{caption_html}'
             f'{format_workout_html(workout)}'
             f'{stimulus_html}'
             f'{tips_html}'
@@ -511,6 +610,10 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
         col_side = (
             _build_weather_html(weather)
+            + f'<div class="panel-card" style="margin-top:0.75rem">'
+            f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
+            f'{_build_joke_html(joke)}'
+            f'</div>'
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
             f'{_build_hn_html(conversation_starter)}'
@@ -541,8 +644,13 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
+    joke = _cached_fetch_daily_joke()
     st.markdown(
         _build_weather_html(weather)
+        + f'<div class="panel-card" style="margin-top:0.75rem">'
+        f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
+        f'{_build_joke_html(joke)}'
+        f'</div>'
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">💬 Gym Conversation Starter</div>'
         f'{_build_hn_html(conversation_starter)}'
