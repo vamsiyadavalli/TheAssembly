@@ -83,6 +83,7 @@ class WorkoutRecord:
     technical_cues: tuple[str, ...]
     status: str = "scheduled"
     movements: tuple[Movement, ...] = ()
+    caption: str = ""
 
     @property
     def workout_date(self) -> date:
@@ -111,6 +112,7 @@ class WorkoutRecord:
             technical_cues=_normalize_cues(normalized["technical_cues"]),
             status=str(normalized.get("status", "scheduled")).strip() or "scheduled",
             movements=_normalize_movements(normalized.get("movements")),
+            caption=str(normalized.get("caption", "")).strip(),
         )
 
         _ = record.workout_date
@@ -128,6 +130,8 @@ class WorkoutRecord:
         }
         if self.movements:
             result["movements"] = [m.to_dict() for m in self.movements]
+        if self.caption:
+            result["caption"] = self.caption
         return result
 
 

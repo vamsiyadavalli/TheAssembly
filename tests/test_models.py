@@ -275,5 +275,40 @@ class MovementModelTests(unittest.TestCase):
         self.assertEqual("3 rounds", d["notes"])
 
 
+class CaptionModelTests(unittest.TestCase):
+    def _base(self) -> dict:
+        return {
+            "date": "2026-05-10",
+            "release_time": "05:30",
+            "content": "5 Rounds for Time",
+            "stimulus": "Strength",
+            "technical_cues": ["Breathe"],
+        }
+
+    def test_caption_defaults_to_empty_string(self) -> None:
+        record = WorkoutRecord.from_dict(self._base())
+        self.assertEqual("", record.caption)
+
+    def test_caption_parsed_from_dict(self) -> None:
+        data = {**self._base(), "caption": "Partner in pain — lean on each other."}
+        record = WorkoutRecord.from_dict(data)
+        self.assertEqual("Partner in pain — lean on each other.", record.caption)
+
+    def test_caption_omitted_from_serialization_when_empty(self) -> None:
+        record = WorkoutRecord.from_dict(self._base())
+        self.assertNotIn("caption", record.to_dict())
+
+    def test_caption_included_in_serialization_when_present(self) -> None:
+        data = {**self._base(), "caption": "Chase the clock."}
+        record = WorkoutRecord.from_dict(data)
+        self.assertIn("caption", record.to_dict())
+        self.assertEqual("Chase the clock.", record.to_dict()["caption"])
+
+    def test_caption_title_case_key_normalizes(self) -> None:
+        data = {**self._base(), "Caption": "Warm up well."}
+        record = WorkoutRecord.from_dict(data)
+        self.assertEqual("Warm up well.", record.caption)
+
+
 if __name__ == "__main__":
     unittest.main()
