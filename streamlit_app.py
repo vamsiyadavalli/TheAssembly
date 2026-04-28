@@ -17,7 +17,7 @@ from theassembly.jokes import DailyJoke, fetch_daily_joke
 from theassembly.models import CurrentState, PhotoRecord, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
-from theassembly.analytics import get_tracking_html
+from theassembly.analytics import fire_event, get_tracking_html
 from theassembly.workout_formatting import format_workout_html, format_workout_summary
 
 
@@ -739,6 +739,12 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         if _tracking_html:
             st.markdown(_tracking_html, unsafe_allow_html=True)
 
+    # ── Server-side GA4 events (once per session via session_state guards) ────
+    _ga4_id, _ga4_secret = _analytics_cfg()
+    if not st.session_state.get("_evt_page_view_fired"):
+        fire_event(_ga4_id, _ga4_secret, "page_view", {"app_role": config.app_role})
+        st.session_state["_evt_page_view_fired"] = True
+
     st.title("TheAssembly")
 
     # Pre-fetch both async data sources before building HTML.
@@ -763,6 +769,18 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
         joke = _cached_fetch_daily_joke()
         photos = _fetch_photos_for_date(_date_today.today().isoformat())
+
+        # ── GA4: workout_viewed / workout_preview_viewed ──────────────────────
+        if slate.is_preview:
+            _evt_key = f"_evt_preview_viewed_{workout.date}"
+            if not st.session_state.get(_evt_key):
+                fire_event(_ga4_id, _ga4_secret, "workout_preview_viewed", {"workout_date": workout.date})
+                st.session_state[_evt_key] = True
+        else:
+            _evt_key = f"_evt_workout_viewed_{workout.date}"
+            if not st.session_state.get(_evt_key):
+                fire_event(_ga4_id, _ga4_secret, "workout_viewed", {"workout_date": workout.date})
+                st.session_state[_evt_key] = True
 
         subtitle = (
             f"{workout.date} · preview available now"
@@ -829,9 +847,15 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         return
 
-    # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
+    # ── GA4: garage_closed_view ───────────────────────────────────────────────
     from datetime import date as _date
     today_iso = _date.today().isoformat()
+    _evt_key_closed = f"_evt_garage_closed_{today_iso}"
+    if not st.session_state.get(_evt_key_closed):
+        fire_event(_ga4_id, _ga4_secret, "garage_closed_view", {"date": today_iso})
+        st.session_state[_evt_key_closed] = True
+
+    # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
     joke = _cached_fetch_daily_joke()
     photos = _fetch_photos_for_date(today_iso)
@@ -893,6 +917,10 @@ def _authenticate_admin(config: AppConfig) -> bool:
     if st.sidebar.button("Unlock admin", use_container_width=True):
         if hmac.compare_digest(password, config.admin_password or ""):
             st.session_state["admin_authenticated"] = True
+            _ga4_id, _ga4_secret = _analytics_cfg()
+            if not st.session_state.get("_evt_admin_authenticated_fired"):
+                fire_event(_ga4_id, _ga4_secret, "admin_authenticated")
+                st.session_state["_evt_admin_authenticated_fired"] = True
             st.rerun()
         st.sidebar.error("Incorrect password.")
     return False
@@ -1064,6 +1092,16 @@ def _require_admin_write_access(config: AppConfig) -> None:
     if not has_write_token:
         st.error("Admin app is missing GITHUB_WRITE_TOKEN. Writes are disabled.")
         st.stop()
+
+
+def _analytics_cfg() -> tuple[str, str]:
+    """Return (ga4_measurement_id, ga4_mp_api_secret) when analytics is enabled, else ('', '')."""
+    if not st.secrets.get("ANALYTICS_ENABLED", False):
+        return "", ""
+    return (
+        str(st.secrets.get("GA4_MEASUREMENT_ID", "") or ""),
+        str(st.secrets.get("GA4_MP_API_SECRET", "") or ""),
+    )
 
 
 def main(app_role: AppRole = "athlete") -> None:

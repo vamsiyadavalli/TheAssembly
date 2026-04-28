@@ -167,6 +167,10 @@ Set these in Streamlit Community Cloud (Advanced settings → Secrets) or as env
 | `CURRENT_STATE_FILE_PATH` | No | Defaults to `current_state.json` |
 | `ADMIN_PASSWORD` | Yes | Shared password for the organizer sidebar |
 | `APP_TIMEZONE` | No | Defaults to `America/New_York` |
+| `ANALYTICS_ENABLED` | No | Set to `true` to enable GA4 + Clarity tracking (defaults to `false`) |
+| `GA4_MEASUREMENT_ID` | Analytics | GA4 Measurement ID (e.g. `G-XXXXXXXXXX`) |
+| `GA4_MP_API_SECRET` | Analytics | GA4 Measurement Protocol API secret |
+| `CLARITY_PROJECT_ID` | Analytics | Microsoft Clarity project ID |
 
 Token selection: admin app uses `GITHUB_WRITE_TOKEN` → falls back to `GITHUB_TOKEN`. Athlete app uses `GITHUB_READ_TOKEN` → falls back to `GITHUB_TOKEN`.
 
@@ -249,6 +253,46 @@ See [deploy/k8s/README.md](deploy/k8s/README.md) for complete deployment guide i
 ```bash
 PYTHONPATH=. pytest tests/ -q
 ```
+
+---
+
+## 📊 Analytics (optional)
+
+TheAssembly supports **opt-in analytics** via Google Analytics 4 (GA4) and Microsoft Clarity. Analytics is **disabled by default** — no tracking runs unless you explicitly set `ANALYTICS_ENABLED = true`.
+
+### What is tracked (server-side GA4 Measurement Protocol events)
+
+| Event | When it fires | Parameters |
+|---|---|---|
+| `page_view` | Once per session on app load | `app_role` |
+| `workout_viewed` | Once per session when a workout is displayed | `workout_date` |
+| `workout_preview_viewed` | Once per session when a preview workout is shown | `workout_date` |
+| `garage_closed_view` | Once per session when the garage-closed slate is shown | `date` |
+| `admin_authenticated` | Once per session when the organizer unlocks the console | — |
+
+All events are guarded with `st.session_state` flags so they fire **at most once per browser session**.
+
+### Client-side tracking
+
+When `ANALYTICS_ENABLED = true`, the page head also receives:
+- **GA4 gtag.js** — page views and custom events with `anonymize_ip: true` and Google Signals disabled.
+- **Microsoft Clarity** — session recordings and heatmaps. No PII is sent.
+
+### Privacy notes
+
+- IP addresses are anonymised (`anonymize_ip: true`).
+- Google Signals is disabled (`allow_google_signals: false`).
+- No athlete names, workout content, or personal data are included in any event payload.
+- You control whether analytics runs — leaving `ANALYTICS_ENABLED` unset or `false` disables all tracking entirely.
+
+### Required secrets (analytics only)
+
+| Key | Purpose |
+|---|---|
+| `ANALYTICS_ENABLED` | Set to `true` to activate. Defaults to `false`. |
+| `GA4_MEASUREMENT_ID` | GA4 Measurement ID (e.g. `G-XXXXXXXXXX`) |
+| `GA4_MP_API_SECRET` | GA4 Measurement Protocol API secret (from GA4 Admin → Data Streams) |
+| `CLARITY_PROJECT_ID` | Microsoft Clarity project ID |
 
 ---
 
