@@ -256,45 +256,34 @@ PYTHONPATH=. pytest tests/ -q
 
 ---
 
-## 📊 Analytics Privacy Policy (optional)
+## 📊 Analytics (optional)
 
-TheAssembly supports **opt-in analytics** using Google Analytics 4 (GA4) and Microsoft Clarity.
-Analytics is **off by default** and runs only when `ANALYTICS_ENABLED = true`.
+TheAssembly supports **opt-in analytics** via Google Analytics 4 (GA4) and Microsoft Clarity. Analytics is **disabled by default** — no tracking runs unless you explicitly set `ANALYTICS_ENABLED = true`.
 
-### MVP custom events (GA4)
+### What is tracked (server-side GA4 Measurement Protocol events)
 
-| Event | When it fires | Core properties |
+| Event | When it fires | Parameters |
 |---|---|---|
-| `gym_workout_view` | Athlete sees today's workout | `role`, `environment`, `workout_date`, `daypart` |
-| `gym_tomorrow_preview_view` | Athlete sees tomorrow preview | `role`, `environment`, `workout_date`, `daypart` |
-| `gym_admin_login` | Organizer unlock succeeds | `role`, `environment`, `daypart` |
-| `gym_admin_toggle_status` | Organizer action sets gym status | `role`, `environment`, `workout_date`, `daypart`, `new_status` |
-| `gym_workout_publish` | Organizer successfully stages workout | `role`, `environment`, `workout_date`, `daypart` |
+| `page_view` | Once per session on app load | `app_role` |
+| `workout_viewed` | Once per session when a workout is displayed | `workout_date` |
+| `workout_preview_viewed` | Once per session when a preview workout is shown | `workout_date` |
+| `garage_closed_view` | Once per session when the garage-closed slate is shown | `date` |
+| `admin_authenticated` | Once per session when the organizer unlocks the console | — |
 
-All custom events use `st.session_state` guards to avoid duplicate firing from Streamlit reruns.
+All events are guarded with `st.session_state` flags so they fire **at most once per browser session**.
 
-### Client-side analytics
+### Client-side tracking
 
-When enabled, athlete/admin pages also inject:
-- **GA4 gtag.js** with `anonymize_ip: true` and Google Signals disabled.
-- **Microsoft Clarity** for behavioral diagnostics.
+When `ANALYTICS_ENABLED = true`, the page head also receives:
+- **GA4 gtag.js** — page views and custom events with `anonymize_ip: true` and Google Signals disabled.
+- **Microsoft Clarity** — session recordings and heatmaps. No PII is sent.
 
-### What is tracked
+### Privacy notes
 
-- Anonymous app interactions and event timing.
-- Operational workout and admin flow events listed above.
-
-### What is not tracked
-
-- Names, emails, phone numbers, passwords, or GitHub tokens.
-- Free-text workout content payloads.
-- Any direct user identity mapping.
-
-### Retention and controls
-
-- GA4 retention is configured in your GA4 property settings.
-- Clarity retention follows Microsoft Clarity defaults.
-- Set `ANALYTICS_ENABLED = false` (or omit it) to disable tracking entirely.
+- IP addresses are anonymised (`anonymize_ip: true`).
+- Google Signals is disabled (`allow_google_signals: false`).
+- No athlete names, workout content, or personal data are included in any event payload.
+- You control whether analytics runs — leaving `ANALYTICS_ENABLED` unset or `false` disables all tracking entirely.
 
 ### Required secrets (analytics only)
 
@@ -302,7 +291,7 @@ When enabled, athlete/admin pages also inject:
 |---|---|
 | `ANALYTICS_ENABLED` | Set to `true` to activate. Defaults to `false`. |
 | `GA4_MEASUREMENT_ID` | GA4 Measurement ID (e.g. `G-XXXXXXXXXX`) |
-| `GA4_MP_API_SECRET` | GA4 Measurement Protocol API secret (GA4 Admin → Data Streams) |
+| `GA4_MP_API_SECRET` | GA4 Measurement Protocol API secret (from GA4 Admin → Data Streams) |
 | `CLARITY_PROJECT_ID` | Microsoft Clarity project ID |
 
 ---
