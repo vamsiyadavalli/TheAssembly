@@ -17,6 +17,7 @@ from theassembly.jokes import DailyJoke, fetch_daily_joke
 from theassembly.models import CurrentState, PhotoRecord, WorkoutRecord, load_current_state, load_workouts
 from theassembly.schedule import AthleteSlate, resolve_athlete_slate
 from theassembly.weather import WorkoutWeather, fetch_workout_weather
+from theassembly.analytics import get_tracking_html
 from theassembly.workout_formatting import format_workout_html, format_workout_summary
 
 
@@ -571,6 +572,70 @@ def _build_joke_html(joke: DailyJoke | None) -> str:
     )
 
 
+@st.cache_data(ttl=3600)
+def _cached_fetch_ai_image_github(
+    target_date_iso: str,
+    github_token: str,
+    owner: str,
+    repo: str,
+    branch: str,
+    photos_folder_path: str,
+) -> str | None:
+    from datetime import date as _date
+    from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
+    repo_config = GitHubRepoConfig(
+        token=github_token,
+        owner=owner,
+        repo=repo,
+        workouts_file_path="workouts.json",
+        current_state_file_path="current_state.json",
+        branch=branch,
+        photos_folder_path=photos_folder_path,
+    )
+    repository = GitHubDataRepository(repo_config)
+    return repository.fetch_ai_image(_date.fromisoformat(target_date_iso))
+
+
+def _build_ai_image_html(workout_date_iso: str, config: "AppConfig") -> str:
+    """Return HTML for the Movement Visualisation card, or '' if no image exists."""
+    data_uri: str | None = None
+
+    if config.github_enabled and config.github_token:
+        data_uri = _cached_fetch_ai_image_github(
+            workout_date_iso,
+            config.github_token,
+            config.workouts_repo_owner,
+            config.workouts_repo_name,
+            config.workouts_repo_branch,
+            config.photos_folder_path,
+        )
+    else:
+        # Local dev fallback: read from sibling TheAssemblyData repo.
+        import base64 as _b64
+        local_path = (
+            Path(__file__).resolve().parent.parent
+            / "TheAssemblyData"
+            / "photos"
+            / "ai"
+            / f"{workout_date_iso}.png"
+        )
+        if local_path.exists():
+            raw = local_path.read_bytes()
+            data_uri = f"data:image/png;base64,{_b64.b64encode(raw).decode()}"
+
+    if not data_uri:
+        return ""
+
+    return (
+        f'<div class="panel-card" style="margin-top:0.75rem">'
+        f'<div class="weather-section-label" style="margin-bottom:0.6rem">🏋️ Movement Visualisation</div>'
+        f'<img src="{data_uri}" '
+        f'style="width:100%;border-radius:10px;display:block" '
+        f'alt="AI-generated workout visualisation">'
+        f'</div>'
+    )
+
+
 def _build_photos_html(photos: list[PhotoRecord]) -> tuple[str, str]:
     """Return (html, dynamic_css) for the post-workout photo gallery panel.
 
@@ -664,6 +729,16 @@ def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | 
 
 def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    _analytics_enabled = st.secrets.get("ANALYTICS_ENABLED", False)
+    if _analytics_enabled:
+        _tracking_html = get_tracking_html(
+            ga4_id=st.secrets.get("GA4_MEASUREMENT_ID", ""),
+            clarity_id=st.secrets.get("CLARITY_PROJECT_ID", ""),
+        )
+        if _tracking_html:
+            st.markdown(_tracking_html, unsafe_allow_html=True)
+
     st.title("TheAssembly")
 
     # Pre-fetch both async data sources before building HTML.
@@ -726,6 +801,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'{stimulus_html}'
             f'{tips_html}'
             f'</div>'
+            + _build_ai_image_html(workout.date, config)
         )
 
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)

@@ -254,6 +254,36 @@ class GitHubDataRepository:
 
         return records
 
+    def fetch_ai_image(self, target_date: date) -> str | None:
+        """Return a base64 data URI for the AI-generated workout image, or None if absent.
+
+        Looks for ``photos/ai/YYYY-MM-DD.png`` in the data repo.  Returns None
+        silently when the file does not exist so callers can omit the panel.
+        """
+        ai_path = f"{self.config.photos_folder_path}/ai/{target_date.isoformat()}.png"
+        try:
+            response = requests.get(
+                self._contents_url(ai_path),
+                headers=self._headers(),
+                params={"ref": self.config.branch},
+                timeout=30,
+            )
+        except requests.RequestException:
+            return None
+
+        if response.status_code == 404:
+            return None
+        if response.status_code >= 400:
+            return None
+
+        payload = response.json()
+        raw_content = payload.get("content", "").replace("\n", "").strip()
+        if not raw_content:
+            return None
+
+        raw_bytes = base64.b64decode(raw_content)
+        return f"data:image/png;base64,{base64.b64encode(raw_bytes).decode()}"
+
     def upload_photo(self, date_str: str, original_filename: str, content_bytes: bytes) -> None:
         """Upload a photo to the photos folder, naming it {date_str}-{original_filename}."""
         safe_name = original_filename.replace("/", "_").replace("..", "_")
