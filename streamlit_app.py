@@ -739,11 +739,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         if _tracking_html:
             st.markdown(_tracking_html, unsafe_allow_html=True)
 
-    # ── Server-side GA4 events (once per session via session_state guards) ────
     _ga4_id, _ga4_secret = _analytics_cfg()
-    if not st.session_state.get("_evt_page_view_fired"):
-        fire_event(_ga4_id, _ga4_secret, "page_view", {"app_role": config.app_role})
-        st.session_state["_evt_page_view_fired"] = True
+    _client_id = _analytics_client_id(config)
 
     st.title("TheAssembly")
 
@@ -770,16 +767,27 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         joke = _cached_fetch_daily_joke()
         photos = _fetch_photos_for_date(_date_today.today().isoformat())
 
-        # ── GA4: workout_viewed / workout_preview_viewed ──────────────────────
         if slate.is_preview:
-            _evt_key = f"_evt_preview_viewed_{workout.date}"
+            _evt_key = f"_evt_gym_tomorrow_preview_view_{workout.date}"
             if not st.session_state.get(_evt_key):
-                fire_event(_ga4_id, _ga4_secret, "workout_preview_viewed", {"workout_date": workout.date})
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "gym_tomorrow_preview_view",
+                    _analytics_event_context(config, workout.date),
+                    client_id=_client_id,
+                )
                 st.session_state[_evt_key] = True
         else:
-            _evt_key = f"_evt_workout_viewed_{workout.date}"
+            _evt_key = f"_evt_gym_workout_view_{workout.date}"
             if not st.session_state.get(_evt_key):
-                fire_event(_ga4_id, _ga4_secret, "workout_viewed", {"workout_date": workout.date})
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "gym_workout_view",
+                    _analytics_event_context(config, workout.date),
+                    client_id=_client_id,
+                )
                 st.session_state[_evt_key] = True
 
         subtitle = (
@@ -847,14 +855,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         return
 
-    # ── GA4: garage_closed_view ───────────────────────────────────────────────
     from datetime import date as _date
     today_iso = _date.today().isoformat()
-    _evt_key_closed = f"_evt_garage_closed_{today_iso}"
-    if not st.session_state.get(_evt_key_closed):
-        fire_event(_ga4_id, _ga4_secret, "garage_closed_view", {"date": today_iso})
-        st.session_state[_evt_key_closed] = True
-
     # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
     joke = _cached_fetch_daily_joke()
@@ -918,9 +920,15 @@ def _authenticate_admin(config: AppConfig) -> bool:
         if hmac.compare_digest(password, config.admin_password or ""):
             st.session_state["admin_authenticated"] = True
             _ga4_id, _ga4_secret = _analytics_cfg()
-            if not st.session_state.get("_evt_admin_authenticated_fired"):
-                fire_event(_ga4_id, _ga4_secret, "admin_authenticated")
-                st.session_state["_evt_admin_authenticated_fired"] = True
+            if not st.session_state.get("_evt_gym_admin_login_fired"):
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "gym_admin_login",
+                    _analytics_event_context(config),
+                    client_id=_analytics_client_id(config),
+                )
+                st.session_state["_evt_gym_admin_login_fired"] = True
             st.rerun()
         st.sidebar.error("Incorrect password.")
     return False
@@ -1050,6 +1058,29 @@ def _render_admin_console(
             except RuntimeError as exc:
                 st.error(str(exc))
             else:
+                _ga4_id, _ga4_secret = _analytics_cfg()
+                _client_id = _analytics_client_id(config)
+                _submit_sig = f"{record.date}|{record.release_time}|{record.status}|{len(record.movements)}"
+                _last_sig = str(st.session_state.get("_evt_last_publish_signature", ""))
+                if _submit_sig != _last_sig:
+                    fire_event(
+                        _ga4_id,
+                        _ga4_secret,
+                        "gym_workout_publish",
+                        _analytics_event_context(config, record.date),
+                        client_id=_client_id,
+                    )
+                    fire_event(
+                        _ga4_id,
+                        _ga4_secret,
+                        "gym_admin_toggle_status",
+                        {
+                            **_analytics_event_context(config, record.date),
+                            "new_status": "open",
+                        },
+                        client_id=_client_id,
+                    )
+                    st.session_state["_evt_last_publish_signature"] = _submit_sig
                 st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
 
     # ---- Upload Workout Photos ----
@@ -1102,6 +1133,37 @@ def _analytics_cfg() -> tuple[str, str]:
         str(st.secrets.get("GA4_MEASUREMENT_ID", "") or ""),
         str(st.secrets.get("GA4_MP_API_SECRET", "") or ""),
     )
+
+
+def _analytics_client_id(config: AppConfig) -> str:
+    key = f"_analytics_client_id_{config.app_role}"
+    if key not in st.session_state:
+        st.session_state[key] = f"{config.app_role}-{os.urandom(8).hex()}"
+    return str(st.session_state[key])
+
+
+def _analytics_event_context(config: AppConfig, workout_date: str | None = None) -> dict[str, str]:
+    tz = pytz.timezone(config.app_timezone)
+    now = datetime.now(tz)
+    hour = now.hour
+    if 5 <= hour < 12:
+        daypart = "morning"
+    elif 12 <= hour < 17:
+        daypart = "afternoon"
+    elif 17 <= hour < 22:
+        daypart = "evening"
+    else:
+        daypart = "night"
+
+    environment = str(_secret_or_env("APP_ENV", "prod") or "prod")
+    payload = {
+        "role": config.app_role,
+        "environment": environment,
+        "daypart": daypart,
+    }
+    if workout_date:
+        payload["workout_date"] = workout_date
+    return payload
 
 
 def main(app_role: AppRole = "athlete") -> None:
