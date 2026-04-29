@@ -1,11 +1,10 @@
 services:
   mcp-playwright:
-    image: ${MCP_PLAYWRIGHT_IMAGE:-ghcr.io/your-org/mcp-playwright:latest}
+    image: mcr.microsoft.com/playwright:v1.51.0-noble
     profiles: ["mcp"]
     ports:
       - "8931:8931"
-    environment:
-      MCP_PORT: "8931"
+    command: npx -y @playwright/mcp@latest --port 8931 --host 0.0.0.0
     restart: unless-stopped
 
   # Pylance itself is a VS Code extension and does not run as an MCP server.
