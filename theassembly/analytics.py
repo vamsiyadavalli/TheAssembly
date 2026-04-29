@@ -17,11 +17,22 @@ _GA4_MP_ENDPOINT = "https://www.google-analytics.com/mp/collect"
 _log = logging.getLogger(__name__)
 
 
-def get_tracking_html(ga4_id: str, clarity_id: str) -> str:
+def get_tracking_html(
+    ga4_id: str,
+    clarity_id: str,
+    app_role: str = "",
+    gym_status: str = "",
+) -> str:
     """Return combined GA4 + Clarity <script> HTML for page-head injection.
 
     Returns an empty string when either ID is falsy so callers can
-    unconditionally pass the result to ``st.markdown``.
+    unconditionally pass the result to ``st.components.v1.html``.
+
+    Args:
+        ga4_id: GA4 Measurement ID.
+        clarity_id: Microsoft Clarity project ID.
+        app_role: Optional role tag sent as a Clarity custom tag (e.g. "athlete").
+        gym_status: Optional gym state tag for Clarity filtering (e.g. "open", "closed").
     """
     if not ga4_id or not clarity_id:
         return ""
@@ -47,7 +58,8 @@ def get_tracking_html(ga4_id: str, clarity_id: str) -> str:
   }})();
   gtag('config', '{ga4_id}', {{
     'anonymize_ip': true,
-    'allow_google_signals': false,
+    'allow_google_signals': true,
+    'send_page_view': false,
     'page_location': _pageUrl
   }});
   // Emit an explicit page_view because auto pageview can be unreliable from
@@ -65,6 +77,9 @@ def get_tracking_html(ga4_id: str, clarity_id: str) -> str:
     t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
     y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
   }})(window,document,"clarity","script","{clarity_id}");
+  // Custom tags let Clarity recordings be filtered by gym state and user role.
+  if ("{app_role}")   {{ clarity("set", "app_role",   "{app_role}");  }}
+  if ("{gym_status}") {{ clarity("set", "gym_status", "{gym_status}"); }}
 </script>
 """
 
