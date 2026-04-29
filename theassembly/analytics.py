@@ -33,9 +33,18 @@ def get_tracking_html(ga4_id: str, clarity_id: str) -> str:
   window.dataLayer = window.dataLayer || [];
   function gtag(){{dataLayer.push(arguments);}}
   gtag('js', new Date());
+  // Resolve the real page URL even when this script runs inside a Streamlit
+  // srcdoc iframe (where document.location is "about:srcdoc"). GA4 Realtime
+  // requires a valid page_location to attribute active users correctly.
+  var _pageUrl = (function() {{
+    try {{ return window.top.location.href; }} catch(e) {{}}
+    try {{ return window.parent.location.href; }} catch(e) {{}}
+    return document.referrer || 'https://asm-athlete.streamlit.app/';
+  }})();
   gtag('config', '{ga4_id}', {{
     'anonymize_ip': true,
-    'allow_google_signals': false
+    'allow_google_signals': false,
+    'page_location': _pageUrl
   }});
 </script>
 <!-- Microsoft Clarity -->
