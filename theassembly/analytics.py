@@ -41,10 +41,21 @@ def get_tracking_html(ga4_id: str, clarity_id: str) -> str:
     try {{ return window.parent.location.href; }} catch(e) {{}}
     return document.referrer || 'https://asm-athlete.streamlit.app/';
   }})();
+  var _pageTitle = (function() {{
+    try {{ return window.top.document.title; }} catch(e) {{}}
+    return document.title || 'TheAssembly';
+  }})();
   gtag('config', '{ga4_id}', {{
     'anonymize_ip': true,
     'allow_google_signals': false,
     'page_location': _pageUrl
+  }});
+  // Emit an explicit page_view because auto pageview can be unreliable from
+  // sandboxed iframe contexts.
+  gtag('event', 'page_view', {{
+    'page_location': _pageUrl,
+    'page_referrer': document.referrer || undefined,
+    'page_title': _pageTitle
   }});
 </script>
 <!-- Microsoft Clarity -->
