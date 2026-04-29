@@ -737,7 +737,9 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             clarity_id=st.secrets.get("CLARITY_PROJECT_ID", ""),
         )
         if _tracking_html:
-            st.html(_tracking_html)
+            # st.html sanitizes/embeds HTML without executing tracking JS.
+            # Use an iframe component so GA4/Clarity scripts can run.
+            st.components.v1.html(_tracking_html, height=0)
 
     _ga4_id, _ga4_secret = _analytics_cfg()
     if not st.session_state.get("_evt_page_view_fired"):
