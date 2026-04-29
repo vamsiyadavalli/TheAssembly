@@ -736,6 +736,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         _tracking_html = get_tracking_html(
             ga4_id=st.secrets.get("GA4_MEASUREMENT_ID", ""),
             clarity_id=st.secrets.get("CLARITY_PROJECT_ID", ""),
+            app_role=config.app_role,
+            gym_status=slate.status,
         )
         if _tracking_html:
             # st.html sanitizes/embeds HTML without executing tracking JS.
