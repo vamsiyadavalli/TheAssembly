@@ -17,6 +17,8 @@
 const { chromium } = require("/tmp/node_modules/playwright");
 
 const TARGET_URL = "https://asm-athlete.streamlit.app";
+const GA4_MEASUREMENT_ID = "G-NX316VV7KW";
+const CLARITY_PROJECT_ID = "wixongack1";
 const WAVES = 5;
 const CONTEXTS_PER_WAVE = 10;
 const WAVE_GAP_MS = 5000;
@@ -99,6 +101,7 @@ async function runContext(browser, wave, ctxIdx) {
     gCollect: false,
     clarityScript: false,
     clarityCollect: false,
+    streamlitTelemetry: false,
   };
 
   let loadTimeMs = 0;
@@ -120,18 +123,21 @@ async function runContext(browser, wave, ctxIdx) {
     // Collect all non-trivial URLs for wave-1 debug output
     if (wave === 1 && ctxIdx === 0 && !url.includes("streamlit.app") && !url.includes("webhook"))
       debugUrls.push(url.slice(0, 120));
-    // Broaden gtag match: any request to googletagmanager or google-analytics
-    if (url.includes("googletagmanager.com") || url.includes("google-analytics.com") || url.includes("analytics.google.com"))
+    // Streamlit has its own telemetry; keep it separate from app analytics.
+    if (url.includes("googletagmanager.com/gtm.js?id=GTM-52GRQSL") || url.includes("UA-122023594-8"))
+      networkHits.streamlitTelemetry = true;
+    if (url.includes("googletagmanager.com/gtag/js") && url.includes(GA4_MEASUREMENT_ID))
       networkHits.gtagScript = true;
     if (
       (url.includes("google-analytics.com/g/collect") ||
        url.includes("analytics.google.com/g/collect") ||
-       url.includes("google-analytics.com/j/collect"))
+       url.includes("google-analytics.com/j/collect")) &&
+      url.includes(GA4_MEASUREMENT_ID)
     )
       networkHits.gCollect = true;
-    if (url.includes("clarity.ms") || url.includes("clarity.ms/tag/") || url.includes("scripts.clarity.ms"))
+    if (url.includes("clarity.ms/tag/") && url.includes(CLARITY_PROJECT_ID))
       networkHits.clarityScript = true;
-    if (url.includes("clarity.ms/collect") || url.includes("b.clarity.ms"))
+    if (url.includes("clarity.ms/collect") || url.includes("b.clarity.ms/collect"))
       networkHits.clarityCollect = true;
   });
 
@@ -211,6 +217,7 @@ async function runContext(browser, wave, ctxIdx) {
     gCollect:   networkHits.gCollect,
     clarityScript: networkHits.clarityScript,
     clarityCollect: networkHits.clarityCollect,
+    streamlitTelemetry: networkHits.streamlitTelemetry,
     error: errorMsg,
     debugUrls,
   };
@@ -242,8 +249,9 @@ async function main() {
     const gtag = results.filter((r) => r.gtagScript).length;
     const gc   = results.filter((r) => r.gCollect).length;
     const cl   = results.filter((r) => r.clarityCollect).length;
+    const st   = results.filter((r) => r.streamlitTelemetry).length;
 
-    console.log(`   Done in ${waveSec}s | app loaded: ${ok}/${CONTEXTS_PER_WAVE} | gtag: ${gtag} | g/collect: ${gc} | clarity: ${cl}`);
+    console.log(`   Done in ${waveSec}s | app loaded: ${ok}/${CONTEXTS_PER_WAVE} | our-gtag: ${gtag} | our-g/collect: ${gc} | our-clarity: ${cl} | st-telemetry: ${st}`);
     // Print debug URLs from W01/C01 to diagnose network capture
     if (wave === 1) {
       const w1c1 = results.find(r => r.ctxIdx === 1);
@@ -294,6 +302,7 @@ async function main() {
   const gtagHits   = allResults.filter((r) => r.gtagScript).length;
   const gcHits     = allResults.filter((r) => r.gCollect).length;
   const clarityHits = allResults.filter((r) => r.clarityCollect).length;
+  const stHits     = allResults.filter((r) => r.streamlitTelemetry).length;
   const linkClicks = allResults.filter((r) => r.linkClicked).length;
   const errors     = allResults.filter((r) => r.error).length;
   const avgLoad    = Math.round(allResults.filter((r) => r.loadTimeMs).reduce((s, r) => s + r.loadTimeMs, 0) / loaded);
@@ -304,9 +313,10 @@ async function main() {
   console.log(`  Total sessions     : ${total}`);
   console.log(`  App loaded         : ${loaded}/${total} (${Math.round(loaded/total*100)}%)`);
   console.log(`  Avg load time      : ${avgLoad}ms`);
-  console.log(`  gtag/js loaded     : ${gtagHits}/${total}`);
-  console.log(`  g/collect fired    : ${gcHits}/${total}`);
-  console.log(`  Clarity collect    : ${clarityHits}/${total}`);
+  console.log(`  Our gtag/js loaded : ${gtagHits}/${total}`);
+  console.log(`  Our g/collect fired: ${gcHits}/${total}`);
+  console.log(`  Our Clarity collect: ${clarityHits}/${total}`);
+  console.log(`  Streamlit telemetry: ${stHits}/${total}`);
   console.log(`  HN link clicks     : ${linkClicks}/${total}`);
   console.log(`  Errors             : ${errors}`);
   console.log("=".repeat(72));
