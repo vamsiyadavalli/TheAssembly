@@ -737,7 +737,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             clarity_id=st.secrets.get("CLARITY_PROJECT_ID", ""),
         )
         if _tracking_html:
-            st.markdown(_tracking_html, unsafe_allow_html=True)
+            import streamlit.components.v1 as _components
+            _components.html(_tracking_html, height=0)
 
     # ── Server-side GA4 events (once per session via session_state guards) ────
     _ga4_id, _ga4_secret = _analytics_cfg()
