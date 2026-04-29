@@ -233,13 +233,13 @@ class GitHubDataRepository:
                     try:
                         buf = io.BytesIO(raw_bytes)
                         img = _PILImage.open(buf).convert("RGB")
-                        max_side = 800
+                        max_side = 400
                         w, h = img.size
                         if max(w, h) > max_side:
                             scale = max_side / max(w, h)
                             img = img.resize((int(w * scale), int(h * scale)), _PILImage.LANCZOS)
                         out = io.BytesIO()
-                        img.save(out, format="JPEG", quality=70, optimize=True)
+                        img.save(out, format="JPEG", quality=50, optimize=True)
                         raw_bytes = out.getvalue()
                         mime = "image/jpeg"
                     except Exception:

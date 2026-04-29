@@ -392,6 +392,39 @@ def _build_repository(config: AppConfig) -> GitHubDataRepository | None:
     return GitHubDataRepository(repo_config)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_load_data(
+    github_token: str,
+    owner: str,
+    repo: str,
+    branch: str,
+    workouts_file_path: str,
+    current_state_file_path: str,
+    photos_folder_path: str,
+    gym_lat: float,
+    gym_lon: float,
+    app_timezone: str,
+    app_role: str,
+) -> tuple[list[WorkoutRecord], CurrentState, str | None]:
+    _cfg = AppConfig(
+        github_token=github_token or None,
+        workouts_repo_owner=owner or None,
+        workouts_repo_name=repo or None,
+        workouts_repo_branch=branch,
+        workouts_file_path=workouts_file_path,
+        current_state_file_path=current_state_file_path,
+        github_enabled=bool(github_token and owner and repo),
+        app_timezone=app_timezone,
+        admin_password=None,
+        admin_enabled=False,
+        gym_lat=gym_lat,
+        gym_lon=gym_lon,
+        photos_folder_path=photos_folder_path,
+        app_role=app_role,
+    )
+    return _load_data(_cfg)
+
+
 def _load_data(config: AppConfig) -> tuple[list[WorkoutRecord], CurrentState, str | None]:
     repository = _build_repository(config)
     if repository is None:
@@ -845,7 +878,6 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'{stimulus_html}'
             f'{tips_html}'
             f'</div>'
-            + _build_ai_image_html(workout.date, config)
         )
 
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
@@ -1116,6 +1148,7 @@ def _render_admin_console(
                     )
                     st.session_state["_evt_last_publish_signature"] = _submit_sig
                 st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
+                _cached_load_data.clear()
 
     # ---- Upload Workout Photos ----
     st.subheader("Upload Workout Photos")
@@ -1201,7 +1234,19 @@ def main(app_role: AppRole = "athlete") -> None:
     config = _app_config(app_role)
     _require_admin_write_access(config)
 
-    records, current_state, error_message = _load_data(config)
+    records, current_state, error_message = _cached_load_data(
+        github_token=config.github_token or "",
+        owner=config.workouts_repo_owner or "",
+        repo=config.workouts_repo_name or "",
+        branch=config.workouts_repo_branch,
+        workouts_file_path=config.workouts_file_path,
+        current_state_file_path=config.current_state_file_path,
+        photos_folder_path=config.photos_folder_path,
+        gym_lat=config.gym_lat,
+        gym_lon=config.gym_lon,
+        app_timezone=config.app_timezone,
+        app_role=config.app_role,
+    )
     now = datetime.now(pytz.timezone(config.app_timezone))
     slate = resolve_athlete_slate(records, current_state, now, config.app_timezone)
     _render_athlete_view(slate, config)
