@@ -7,6 +7,7 @@ from typing import Literal
 import hmac
 import os
 import re
+from uuid import uuid4
 
 import pytz
 import streamlit as st
@@ -742,8 +743,18 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             st.components.v1.html(_tracking_html, height=0)
 
     _ga4_id, _ga4_secret = _analytics_cfg()
+    _client_id = _analytics_client_id(config)
     if not st.session_state.get("_evt_page_view_fired"):
-        fire_event(_ga4_id, _ga4_secret, "page_view", {"app_role": config.app_role})
+        fire_event(
+            _ga4_id,
+            _ga4_secret,
+            "page_view",
+            {
+                **_analytics_event_context(config),
+                "engagement_time_msec": 1000,
+            },
+            client_id=_client_id,
+        )
         st.session_state["_evt_page_view_fired"] = True
 
     st.title("TheAssembly")
@@ -775,12 +786,24 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         if slate.is_preview:
             _evt_key = f"_evt_preview_viewed_{workout.date}"
             if not st.session_state.get(_evt_key):
-                fire_event(_ga4_id, _ga4_secret, "workout_preview_viewed", {"workout_date": workout.date})
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "workout_preview_viewed",
+                    _analytics_event_context(config, workout.date),
+                    client_id=_client_id,
+                )
                 st.session_state[_evt_key] = True
         else:
             _evt_key = f"_evt_workout_viewed_{workout.date}"
             if not st.session_state.get(_evt_key):
-                fire_event(_ga4_id, _ga4_secret, "workout_viewed", {"workout_date": workout.date})
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "workout_viewed",
+                    _analytics_event_context(config, workout.date),
+                    client_id=_client_id,
+                )
                 st.session_state[_evt_key] = True
 
         subtitle = (
@@ -853,7 +876,16 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     today_iso = _date.today().isoformat()
     _evt_key_closed = f"_evt_garage_closed_{today_iso}"
     if not st.session_state.get(_evt_key_closed):
-        fire_event(_ga4_id, _ga4_secret, "garage_closed_view", {"date": today_iso})
+        fire_event(
+            _ga4_id,
+            _ga4_secret,
+            "garage_closed_view",
+            {
+                **_analytics_event_context(config),
+                "date": today_iso,
+            },
+            client_id=_client_id,
+        )
         st.session_state[_evt_key_closed] = True
 
     # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
@@ -919,8 +951,15 @@ def _authenticate_admin(config: AppConfig) -> bool:
         if hmac.compare_digest(password, config.admin_password or ""):
             st.session_state["admin_authenticated"] = True
             _ga4_id, _ga4_secret = _analytics_cfg()
+            _client_id = _analytics_client_id(config)
             if not st.session_state.get("_evt_admin_authenticated_fired"):
-                fire_event(_ga4_id, _ga4_secret, "admin_authenticated")
+                fire_event(
+                    _ga4_id,
+                    _ga4_secret,
+                    "admin_authenticated",
+                    _analytics_event_context(config),
+                    client_id=_client_id,
+                )
                 st.session_state["_evt_admin_authenticated_fired"] = True
             st.rerun()
         st.sidebar.error("Incorrect password.")
@@ -1126,6 +1165,27 @@ def _analytics_cfg() -> tuple[str, str]:
         str(st.secrets.get("GA4_MEASUREMENT_ID", "") or ""),
         str(st.secrets.get("GA4_MP_API_SECRET", "") or ""),
     )
+
+
+def _analytics_client_id(config: AppConfig) -> str:
+    """Return a stable GA4 client_id for the current Streamlit session."""
+    key = f"_ga_client_id_{config.app_role}"
+    current = st.session_state.get(key)
+    if not current:
+        current = f"{config.app_role}-{uuid4()}"
+        st.session_state[key] = current
+    return str(current)
+
+
+def _analytics_event_context(config: AppConfig, workout_date: str | None = None) -> dict[str, str]:
+    """Shared event context for GA4 Measurement Protocol events."""
+    params: dict[str, str] = {
+        "app_role": config.app_role,
+        "page_location": "https://asm-athlete.streamlit.app/" if config.app_role == "athlete" else "https://asm-control.streamlit.app/",
+    }
+    if workout_date:
+        params["workout_date"] = workout_date
+    return params
 
 
 
