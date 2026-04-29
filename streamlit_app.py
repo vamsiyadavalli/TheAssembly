@@ -1050,6 +1050,29 @@ def _render_admin_console(
             except RuntimeError as exc:
                 st.error(str(exc))
             else:
+                _ga4_id, _ga4_secret = _analytics_cfg()
+                _client_id = _analytics_client_id(config)
+                _submit_sig = f"{record.date}|{record.release_time}|{record.status}|{len(record.movements)}"
+                _last_sig = str(st.session_state.get("_evt_last_publish_signature", ""))
+                if _submit_sig != _last_sig:
+                    fire_event(
+                        _ga4_id,
+                        _ga4_secret,
+                        "gym_workout_publish",
+                        _analytics_event_context(config, record.date),
+                        client_id=_client_id,
+                    )
+                    fire_event(
+                        _ga4_id,
+                        _ga4_secret,
+                        "gym_admin_toggle_status",
+                        {
+                            **_analytics_event_context(config, record.date),
+                            "new_status": "open",
+                        },
+                        client_id=_client_id,
+                    )
+                    st.session_state["_evt_last_publish_signature"] = _submit_sig
                 st.success(f"Saved workout for {record.date} and reset the athlete slate to open.")
 
     # ---- Upload Workout Photos ----
@@ -1102,6 +1125,7 @@ def _analytics_cfg() -> tuple[str, str]:
         str(st.secrets.get("GA4_MEASUREMENT_ID", "") or ""),
         str(st.secrets.get("GA4_MP_API_SECRET", "") or ""),
     )
+
 
 
 def main(app_role: AppRole = "athlete") -> None:
