@@ -1,30 +1,25 @@
+%% High-Level Overview — see architecture-app.mmd for app internals, architecture-infra.mmd for deployment details
 graph TD
-    subgraph GymOwnerSetup["🏋️ Gym Owner Setup Path"]
-        Template["TheAssembly\n(public template repo)\nUse this template ↓"]
-        DataTemplate["TheAssemblyData-template\n(public starter repo)\nUse this template ↓"]
+    subgraph GymOwnerSetup["🏋️ Gym Owner Setup"]
+        Template["TheAssembly\n(public template repo)"]
+        DataTemplate["TheAssemblyData-template\n(public starter repo)"]
         GymRepo["YourGymName app repo\n(forked from template)"]
         GymData["YourGymName-data\n(private — YOUR IP)"]
-        PAT["GitHub PAT\nRead-only → athlete\nRead+Write → admin"]
-        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc."]
+        PAT["GitHub PAT\nRead-only → athlete app\nRead+Write → admin app"]
+        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN → athlete\nGITHUB_WRITE_TOKEN → admin\n(both map to GITHUB_TOKEN in-app)\nWORKOUTS_REPO_OWNER etc."]
         Template --> GymRepo
         DataTemplate --> GymData
         PAT --> StreamlitSecrets
         GymData -.->|"stays private forever"| GymData
     end
 
-    subgraph StreamlitCloud["☁️ Streamlit Community Cloud"]
-        AthleteApp["athlete_app.py\nAthlete Portal"]
-        AdminApp["admin_app.py\nOrganizer Portal"]
+    subgraph DeploymentPaths["🚀 Deployment — see architecture-infra.mmd"]
+        StreamlitCloud["☁️ Streamlit Community Cloud\nasm-athlete.streamlit.app\nasm-control.streamlit.app"]
+        SelfHosted["🐳 Self-Hosted\nDocker · Kubernetes · Traefik\nasm-athlete.theassembly.app\nasm-control.theassembly.app"]
     end
 
-    subgraph TheAssembly["📦 TheAssembly — Application Code"]
-        StreamlitApp["streamlit_app.py\nmain() · _render_athlete_view()\n_render_admin_console() · _authenticate_admin()"]
-        subgraph Package["theassembly/"]
-            Config["config.py\nAppConfig · load_config()"]
-            Models["models.py\nWorkoutRecord · CurrentState\nload_workouts() · serialize_workouts()"]
-            GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()"]
-            Schedule["schedule.py\nAthleteSlate · resolve_athlete_slate()\ndetect_logic_window()"]
-        end
+    subgraph AppCode["📦 Application Code — see architecture-app.mmd"]
+        AppNode["streamlit_app.py + theassembly/\nconfig · models · github_repo · schedule\nanalytics · weather · jokes · hn_topics\nworkout_formatting · workout_poster"]
     end
 
     subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
@@ -32,14 +27,8 @@ graph TD
         StateJSON["current_state.json\n{ status: open | closed }"]
     end
 
-    subgraph GitHubAPI["🐙 GitHub REST API"]
+    subgraph GitHubAPI["🐙 GitHub REST API (Contents API)"]
         ContentsAPI["GET /repos/:owner/:repo/contents/:path\nPUT /repos/:owner/:repo/contents/:path"]
-    end
-
-    subgraph Secrets["🔑 Secrets / Environment"]
-        Tokens["GITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nGITHUB_TOKEN (fallback)"]
-        RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
-        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE"]
     end
 
     subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
@@ -49,23 +38,16 @@ graph TD
     end
 
     subgraph CI["🔄 GitHub Actions"]
-        TestsWF[".github/workflows/tests.yml\nunit tests + ruff lint\non push/PR to dev and master"]
-        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates data repo\ncron + manual dispatch"]
+        TestsWF[".github/workflows/tests.yml\nunit tests + ruff lint\npush/PR to dev + master"]
+        MonitorWF[".github/workflows/workout-monitoring.yml\nvalidates data repo\ncron: 12:05 PM + 9:05 PM ET · manual dispatch"]
     end
 
-    GymRepo --> StreamlitCloud
-    StreamlitSecrets --> Secrets
-    AthleteApp -->|"app_role=athlete"| StreamlitApp
-    AdminApp -->|"app_role=admin"| StreamlitApp
-    StreamlitApp --> Config
-    StreamlitApp --> Models
-    StreamlitApp --> GHRepo
-    StreamlitApp --> Schedule
-    GHRepo -->|"HTTP GET/PUT + Bearer token"| ContentsAPI
+    GymRepo --> DeploymentPaths
+    StreamlitSecrets --> AppCode
+    DeploymentPaths --> AppCode
+    AppCode -->|"HTTP GET/PUT + Bearer token"| ContentsAPI
     ContentsAPI --> WorkoutsJSON
     ContentsAPI --> StateJSON
-    Secrets --> Config
-    Secrets --> StreamlitApp
-    Schedule --> TimeLogic
-    CI -->|"reads"| PrivateDataRepo
+    AppCode --> TimeLogic
+    CI -->|"reads + validates"| PrivateDataRepo
 

@@ -1,0 +1,70 @@
+%% Infrastructure Deep-Dive — see architecture.mmd for overview, architecture-app.mmd for app internals
+graph TD
+    subgraph ContainerImage["📦 Container Image"]
+        Dockerfile["Dockerfile\nsingle image for both roles\nghcr.io/your-org/theassembly:latest\ncommand override selects athlete or admin"]
+    end
+
+    subgraph DockerLocal["🐳 Docker — Local Development"]
+        DCAthletePort["athlete service\nport 8501 → 8501\nstreamlit run athlete_app.py"]
+        DCAdminPort["admin service\nport 8502 → 8501\nstreamlit run admin_app.py"]
+        DCOverrideEnv["docker-compose.override.env\n(secrets file, git-ignored)"]
+        DCOverrideEnv --> DCAthletePort
+        DCOverrideEnv --> DCAdminPort
+    end
+
+    subgraph StreamlitCloud["☁️ Streamlit Community Cloud (Production)"]
+        SCAthleteApp["Athlete App\nasm-athlete.streamlit.app\napp_role=athlete"]
+        SCAdminApp["Admin App\nasm-control.streamlit.app\napp_role=admin"]
+        SCSecrets["Streamlit Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc."]
+        SCSecrets --> SCAthleteApp
+        SCSecrets --> SCAdminApp
+    end
+
+    subgraph K8sCluster["☸️ Kubernetes Cluster (Self-Hosted)"]
+        subgraph AppsNS["namespace: theassembly-apps"]
+            AthleteDeployment["athlete Deployment\nghcr.io/your-org/theassembly:latest\ncmd: streamlit run athlete_app.py\nport 8501 · replicas: 1\nCPU 100m–500m · Mem 256Mi–512Mi"]
+            AdminDeployment["admin Deployment\nghcr.io/your-org/theassembly:latest\ncmd: streamlit run admin_app.py\nport 8501 · replicas: 1\nCPU 100m–500m · Mem 256Mi–512Mi"]
+            AppSecret["Secret: app-secret\nGITHUB_TOKEN\nADMIN_PASSWORD etc."]
+            AppConfigMap["ConfigMap: shared-config\nWORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nAPP_TIMEZONE etc."]
+            AppSecret --> AthleteDeployment
+            AppSecret --> AdminDeployment
+            AppConfigMap --> AthleteDeployment
+            AppConfigMap --> AdminDeployment
+        end
+
+        subgraph MCPNamespace["namespace: theassembly-mcp"]
+            MCPPlaywright["mcp-playwright Deployment\nghcr.io/your-org/mcp-playwright:latest\nport 8931 · replicas: 1\nCPU 200m–1000m · Mem 512Mi–1Gi"]
+            MCPPyright["mcp-pyright Deployment\nghcr.io/your-org/mcp-pyright:latest\nport 8932 · replicas: 1\nCPU 100m–500m · Mem 256Mi–512Mi"]
+        end
+
+        subgraph Ingress["🌐 Ingress + TLS"]
+            Traefik["Traefik Ingress Controller\ningressClassName: traefik\ntls: true"]
+            CertManager["cert-manager\nClusterIssuer"]
+            ProdIssuer["letsencrypt-prod\nprod-tls-cert"]
+            StageIssuer["letsencrypt-staging\nstage-tls-cert"]
+            CertManager --> ProdIssuer
+            CertManager --> StageIssuer
+        end
+
+        subgraph NetworkPolicies["🔒 Network Policies"]
+            AppsDefaultDeny["theassembly-apps\ndefault-deny ingress+egress"]
+            MCPDefaultDeny["theassembly-mcp\ndefault-deny ingress+egress"]
+            AllowRules["allow-rules\n(per-service explicit permits)"]
+        end
+
+        ProdHosts["Prod Hosts\nasm-athlete.theassembly.app → athlete:8501\nasm-control.theassembly.app → admin:8501"]
+        StageHosts["Stage Hosts\nstage-asm-athlete.theassembly.app → athlete:8501\nstage-asm-control.theassembly.app → admin:8501"]
+
+        Traefik -->|"TLS termination"| ProdHosts
+        Traefik -->|"TLS termination"| StageHosts
+        ProdHosts --> AthleteDeployment
+        ProdHosts --> AdminDeployment
+        StageHosts --> AthleteDeployment
+        StageHosts --> AdminDeployment
+        ProdIssuer --> Traefik
+        StageIssuer --> Traefik
+    end
+
+    Dockerfile --> DockerLocal
+    Dockerfile --> K8sCluster
+    Dockerfile --> StreamlitCloud

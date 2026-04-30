@@ -1,0 +1,74 @@
+%% Application Code Deep-Dive — see architecture.mmd for overview, architecture-infra.mmd for deployment
+graph TD
+    subgraph EntryPoints["🚪 App Entry Points"]
+        AthleteApp["athlete_app.py\napp_role=athlete"]
+        AdminApp["admin_app.py\napp_role=admin"]
+        StreamlitApp["streamlit_app.py\nmain()\n_render_athlete_view()\n_render_admin_console()\n_authenticate_admin()"]
+        AthleteApp -->|"app_role=athlete"| StreamlitApp
+        AdminApp -->|"app_role=admin"| StreamlitApp
+    end
+
+    subgraph Secrets["🔑 Secrets / Environment"]
+        TokenCfg["GITHUB_READ_TOKEN → athlete app\nGITHUB_WRITE_TOKEN → admin app\n↓ both injected as GITHUB_TOKEN in-app"]
+        RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
+        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE\n(default: America/New_York)"]
+    end
+
+    subgraph Package["📦 theassembly/ package"]
+        Config["config.py\nAppConfig dataclass\nload_config()\ngithub_enabled · admin_enabled"]
+        Models["models.py\nWorkoutRecord · Movement · CurrentState\nPhotoRecord\nload_workouts() · serialize_workouts()\nfrom_dict() · to_dict()"]
+        GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts()\nsave_workouts()\nfetch_current_state()\nupsert_workout()"]
+        Schedule["schedule.py\nAthleteSlate\nresolve_athlete_slate()\ndetect_logic_window()\nPREVIEW_START = 4:00 PM\nDAYTIME_CLOSE = 11:00 AM"]
+        Analytics["analytics.py\nGA4 Measurement Protocol\nMicrosoft Clarity\nHTML tag injection"]
+        Weather["weather.py\nOpen-Meteo forecast\nhourly 5–8 AM window\nFahrenheit · mph"]
+        Jokes["jokes.py\nJokeAPI v2\nsafe-mode two-part jokes"]
+        HNTopics["hn_topics.py\nHacker News Firebase API\ntop 30 stories + comments\nengagement-ranked topics"]
+        WktFormatting["workout_formatting.py\nHTML renderer\nsection grouping\n(WOD vs. Finisher)"]
+        WktImage["workout_image.py\nAI image prompt builder\n⚠️ no external API calls"]
+        WktPoster["workout_poster.py\nPillow PNG poster\n1024×576 · local assets\n⚠️ no external API calls"]
+    end
+
+    subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
+        Overnight["Overnight\n12:00 AM – 10:59 AM\n→ Show today's workout"]
+        Closed["Daytime Closed\n11:00 AM – 3:59 PM\n→ Garage Closed\n(overridable: FORCE_OPEN_UNTIL)"]
+        Preview["Preview\n4:00 PM – 11:59 PM\n→ Show tomorrow's workout"]
+    end
+
+    subgraph GitHubAPI["🐙 GitHub REST API (Contents API)"]
+        ContentsAPI["GET /repos/:owner/:repo/contents/:path\nPUT /repos/:owner/:repo/contents/:path\nBearer token auth"]
+    end
+
+    subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
+        WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
+        StateJSON["current_state.json\n{ status: open | closed }"]
+    end
+
+    subgraph ExternalAPIs["🌐 External APIs"]
+        OpenMeteo["Open-Meteo\napi.open-meteo.com/v1/forecast\nno auth required"]
+        JokeAPI["JokeAPI v2\nv2.jokeapi.dev/joke/Any\nsafe-mode · blacklisted flags"]
+        HNFirebase["Hacker News Firebase\nhacker-news.firebaseio.com/v0/\ntopstories + item endpoints"]
+        GA4["Google Analytics 4\ngoogle-analytics.com/mp/collect\nMeasurement Protocol (server-side)\ngtag.js (client-side injection)"]
+        Clarity["Microsoft Clarity\nclarity.ms/tag/{clarity_id}\nclient-side script injection"]
+    end
+
+    Secrets --> Config
+    Config --> StreamlitApp
+    StreamlitApp --> Models
+    StreamlitApp --> GHRepo
+    StreamlitApp --> Schedule
+    StreamlitApp --> Analytics
+    StreamlitApp --> Weather
+    StreamlitApp --> Jokes
+    StreamlitApp --> HNTopics
+    StreamlitApp --> WktFormatting
+    StreamlitApp --> WktImage
+    StreamlitApp --> WktPoster
+    Schedule --> TimeLogic
+    GHRepo -->|"HTTP GET/PUT + Bearer token"| ContentsAPI
+    ContentsAPI --> WorkoutsJSON
+    ContentsAPI --> StateJSON
+    Weather -->|"GET forecast"| OpenMeteo
+    Jokes -->|"GET joke"| JokeAPI
+    HNTopics -->|"GET top stories"| HNFirebase
+    Analytics -->|"POST events"| GA4
+    Analytics -->|"inject script"| Clarity
