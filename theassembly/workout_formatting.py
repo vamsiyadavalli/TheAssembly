@@ -68,18 +68,81 @@ def _render_structured(header: str, movements: tuple["Movement", ...]) -> str:
         parts.append(f'<div class="workout-structured-header">{escape(header)}</div>')
 
     for section_name, mvmts in sections.items():
-        rows = "".join(_movement_row(m) for m in mvmts)
         if section_name:
-            parts.append(
-                f'<div class="movement-finisher-block">'
-                f'<div class="movement-section-label">{escape(section_name)}</div>'
-                f'<div class="movement-list">{rows}</div>'
-                f'</div>'
-            )
+            parts.append(_render_section_block(section_name, mvmts))
         else:
+            rows = "".join(_movement_row(m) for m in mvmts)
             parts.append(f'<div class="movement-list">{rows}</div>')
 
     return "".join(parts)
+
+
+def _render_section_block(section_name: str, mvmts: list["Movement"]) -> str:
+    """Render a named section (e.g. Finisher), grouping by finisher_part when present."""
+    # Collect distinct part numbers > 0 in insertion order.
+    seen_parts: dict[int, list["Movement"]] = {}
+    ungrouped: list["Movement"] = []
+    for m in mvmts:
+        if m.finisher_part > 0:
+            if m.finisher_part not in seen_parts:
+                seen_parts[m.finisher_part] = []
+            seen_parts[m.finisher_part].append(m)
+        else:
+            ungrouped.append(m)
+
+    # Multi-part: at least two distinct part numbers → show part headers.
+    if len(seen_parts) >= 2:
+        inner_html = _render_finisher_parts(seen_parts, ungrouped)
+    else:
+        # Single explicit part or no explicit parts → flat list (no extra headers).
+        all_mvmts = list(mvmts)
+        inner_html = f'<div class="movement-list">{"".join(_movement_row(m) for m in all_mvmts)}</div>'
+
+    return (
+        f'<div class="movement-finisher-block">'
+        f'<div class="movement-section-label">{escape(section_name)}</div>'
+        f'{inner_html}'
+        f'</div>'
+    )
+
+
+def _render_finisher_parts(
+    part_groups: dict[int, list["Movement"]],
+    ungrouped: list["Movement"],
+) -> str:
+    """Render grouped finisher parts with part-level subheaders."""
+    html_pieces: list[str] = []
+
+    # Render any ungrouped movements first (rare, backward-compat)
+    if ungrouped:
+        rows = "".join(_movement_row(m) for m in ungrouped)
+        html_pieces.append(f'<div class="movement-list finisher-part-list">{rows}</div>')
+
+    for idx, part_num in enumerate(sorted(part_groups)):
+        part_mvmts = part_groups[part_num]
+        first = part_mvmts[0]
+        part_label = f"Part {part_num}"
+        # Use title if supplied, fall back to type, fall back to empty.
+        part_detail = first.finisher_part_title or first.finisher_part_type
+        is_first = idx == 0 and not ungrouped
+        html_pieces.append(_finisher_part_header(part_label, part_detail, is_first=is_first))
+        rows = "".join(_movement_row(m) for m in part_mvmts)
+        html_pieces.append(f'<div class="movement-list finisher-part-list">{rows}</div>')
+
+    return "".join(html_pieces)
+
+
+def _finisher_part_header(label: str, detail: str, *, is_first: bool = False) -> str:
+    margin = "" if is_first else ' style="margin-top:0.9rem"'
+    detail_html = (
+        f'<span class="finisher-part-detail">{escape(detail)}</span>' if detail else ""
+    )
+    return (
+        f'<div class="finisher-part-header"{margin}>'
+        f'<span class="finisher-part-label">{escape(label)}</span>'
+        f'{detail_html}'
+        f'</div>'
+    )
 
 
 def _movement_row(m: "Movement") -> str:
@@ -91,7 +154,15 @@ def _movement_row(m: "Movement") -> str:
     if m.scaled_weight:
         badges += f'<span class="scaled-badge">{escape(m.scaled_weight)}</span>'
     badges_html = f'<span class="movement-badges">{badges}</span>' if badges else ""
-    notes_html = f'<div class="mvmt-notes">{escape(m.notes)}</div>' if m.notes else ""
+
+    # When a movement is explicitly assigned to a finisher part, suppress any
+    # legacy "Part N —" prefix from notes so the same text isn't shown twice.
+    display_notes = m.notes
+    if m.finisher_part > 0 and display_notes:
+        import re as _re
+        display_notes = _re.sub(r"^Part\s+\d+\s*[—\-–]\s*", "", display_notes).strip()
+
+    notes_html = f'<div class="mvmt-notes">{escape(display_notes)}</div>' if display_notes else ""
 
     return (
         f'<div class="movement-row">'

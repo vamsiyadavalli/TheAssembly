@@ -35,6 +35,9 @@ class Movement:
     scaled_weight: str = ""
     notes: str = ""
     section: str = ""
+    finisher_part: int = 0
+    finisher_part_type: str = ""
+    finisher_part_title: str = ""
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Movement":
@@ -42,6 +45,11 @@ class Movement:
         name = str(normalized.get("name", "")).strip()
         if not name:
             raise ValueError("Movement entry is missing required field: name")
+        raw_part = normalized.get("finisher_part", 0)
+        try:
+            part = int(raw_part)
+        except (TypeError, ValueError):
+            part = 0
         return cls(
             name=name,
             reps=str(normalized.get("reps", "")).strip(),
@@ -49,6 +57,9 @@ class Movement:
             scaled_weight=str(normalized.get("scaled_weight", "")).strip(),
             notes=str(normalized.get("notes", "")).strip(),
             section=str(normalized.get("section", "")).strip(),
+            finisher_part=part,
+            finisher_part_type=str(normalized.get("finisher_part_type", "")).strip(),
+            finisher_part_title=str(normalized.get("finisher_part_title", "")).strip(),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -63,6 +74,12 @@ class Movement:
             result["notes"] = self.notes
         if self.section:
             result["section"] = self.section
+        if self.finisher_part:
+            result["finisher_part"] = self.finisher_part
+        if self.finisher_part_type:
+            result["finisher_part_type"] = self.finisher_part_type
+        if self.finisher_part_title:
+            result["finisher_part_title"] = self.finisher_part_title
         return result
 
 

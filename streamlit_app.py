@@ -224,6 +224,29 @@ CUSTOM_CSS = """
         letter-spacing: 0.12em;
         margin-bottom: 0.5rem;
     }
+    .finisher-part-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 0.45rem 0 0.35rem 0;
+        border-top: 1px solid rgba(245, 158, 11, 0.22);
+        margin-bottom: 0.2rem;
+    }
+    .finisher-part-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #f59e0b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+    .finisher-part-detail {
+        font-size: 0.68rem;
+        color: #94a3b8;
+        font-style: italic;
+    }
+    .finisher-part-list {
+        margin-bottom: 0.15rem;
+    }
     .rx-badge {
         display: inline-block;
         padding: 0.15rem 0.5rem;
@@ -881,8 +904,10 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
 
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
+        col_side_ai_image_html = _build_ai_image_html(workout.workout_date.isoformat(), config)
         col_side = (
-            _build_weather_html(weather)
+            col_side_ai_image_html
+            + _build_weather_html(weather)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
