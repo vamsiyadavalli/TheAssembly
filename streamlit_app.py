@@ -247,6 +247,46 @@ CUSTOM_CSS = """
     .finisher-part-list {
         margin-bottom: 0.15rem;
     }
+    /* ---- AI Poster: main-column click-to-expand ---- */
+    .ai-poster-expand {
+        display: block;
+    }
+    .ai-poster-expand > summary {
+        cursor: pointer;
+        list-style: none;
+        position: relative;
+        display: block;
+    }
+    .ai-poster-expand > summary::-webkit-details-marker { display: none; }
+    .ai-poster-thumb {
+        width: 100%;
+        max-width: 760px;
+        border-radius: 10px;
+        display: block;
+        opacity: 0.88;
+        transition: opacity 0.18s;
+    }
+    .ai-poster-expand > summary:hover .ai-poster-thumb { opacity: 1; }
+    .ai-poster-hint {
+        position: absolute;
+        bottom: 0.45rem;
+        right: 0.45rem;
+        background: rgba(2, 6, 23, 0.72);
+        color: #94a3b8;
+        font-size: 0.68rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 5px;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+    }
+    .ai-poster-expand[open] > summary .ai-poster-hint { display: none; }
+    .ai-poster-full {
+        width: 100%;
+        max-width: 760px;
+        margin-top: 0.5rem;
+        border-radius: 10px;
+        display: block;
+    }
     .rx-badge {
         display: inline-block;
         padding: 0.15rem 0.5rem;
@@ -686,9 +726,13 @@ def _build_ai_image_html(workout_date_iso: str, config: "AppConfig") -> str:
     return (
         f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.6rem">🏋️ Movement Visualisation</div>'
-        f'<img src="{data_uri}" '
-        f'style="width:100%;border-radius:10px;display:block" '
-        f'alt="AI-generated workout visualisation">'
+        f'<details class="ai-poster-expand">'
+        f'<summary>'
+        f'<img src="{data_uri}" class="ai-poster-thumb" alt="Workout poster preview">'
+        f'<span class="ai-poster-hint">Tap to expand</span>'
+        f'</summary>'
+        f'<img src="{data_uri}" class="ai-poster-full" alt="AI-generated workout visualisation">'
+        f'</details>'
         f'</div>'
     )
 
@@ -889,6 +933,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>'
         ) if workout.stimulus else ""
 
+        col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
+        col_side_ai_image_html = _build_ai_image_html(workout.workout_date.isoformat(), config)
         col_main = (
             f'<div class="hero-card">'
             f'<div class="eyebrow">Athlete View</div>'
@@ -901,13 +947,11 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'{stimulus_html}'
             f'{tips_html}'
             f'</div>'
+            + col_side_ai_image_html
         )
 
-        col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
-        col_side_ai_image_html = _build_ai_image_html(workout.workout_date.isoformat(), config)
         col_side = (
-            col_side_ai_image_html
-            + _build_weather_html(weather)
+            _build_weather_html(weather)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
