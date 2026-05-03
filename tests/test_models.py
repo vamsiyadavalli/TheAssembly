@@ -310,5 +310,56 @@ class CaptionModelTests(unittest.TestCase):
         self.assertEqual("Warm up well.", record.caption)
 
 
+class FinisherPartModelTests(unittest.TestCase):
+    def test_finisher_part_defaults_to_zero(self) -> None:
+        m = Movement.from_dict({"name": "Hollow Rocks", "reps": "45s", "section": "Finisher"})
+        self.assertEqual(0, m.finisher_part)
+        self.assertEqual("", m.finisher_part_type)
+        self.assertEqual("", m.finisher_part_title)
+
+    def test_finisher_part_parses_explicit_fields(self) -> None:
+        m = Movement.from_dict({
+            "name": "Flutter Kicks",
+            "reps": "20s",
+            "section": "Finisher",
+            "finisher_part": 1,
+            "finisher_part_type": "Tabata",
+            "finisher_part_title": "4:00 Tabata",
+        })
+        self.assertEqual(1, m.finisher_part)
+        self.assertEqual("Tabata", m.finisher_part_type)
+        self.assertEqual("4:00 Tabata", m.finisher_part_title)
+
+    def test_finisher_part_round_trips(self) -> None:
+        original = {
+            "name": "Pull Ups",
+            "reps": "6-8",
+            "section": "Finisher",
+            "finisher_part": 2,
+            "finisher_part_type": "EMOM",
+            "finisher_part_title": "12:00 EMOM",
+        }
+        m = Movement.from_dict(original)
+        d = m.to_dict()
+        self.assertEqual(2, d["finisher_part"])
+        self.assertEqual("EMOM", d["finisher_part_type"])
+        self.assertEqual("12:00 EMOM", d["finisher_part_title"])
+
+    def test_finisher_part_omitted_when_zero(self) -> None:
+        m = Movement.from_dict({"name": "Wall Balls", "reps": "12"})
+        d = m.to_dict()
+        self.assertNotIn("finisher_part", d)
+        self.assertNotIn("finisher_part_type", d)
+        self.assertNotIn("finisher_part_title", d)
+
+    def test_finisher_part_coerces_string_integer(self) -> None:
+        m = Movement.from_dict({"name": "Pushups", "reps": "10", "section": "Finisher", "finisher_part": "2"})
+        self.assertEqual(2, m.finisher_part)
+
+    def test_finisher_part_invalid_value_falls_back_to_zero(self) -> None:
+        m = Movement.from_dict({"name": "Pushups", "reps": "10", "finisher_part": "bad"})
+        self.assertEqual(0, m.finisher_part)
+
+
 if __name__ == "__main__":
     unittest.main()
