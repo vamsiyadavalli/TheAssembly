@@ -92,8 +92,17 @@ def _format_movement_block(movements: list, numbered: bool = True) -> str:
         reps_part = f"{m.reps} " if m.reps else ""
         prefix = f"{i}. " if numbered else "* "
         lines.append(f"{prefix}{reps_part}{m.name}")
-        if m.notes:
-            lines.append(f'   * "{m.notes}"')
+        # Suppress notes that are just a repeated round count (shown via group header).
+        display_notes = m.notes
+        if m.round_group > 0 and display_notes:
+            display_notes = re.sub(
+                r"^(then\s+)?\d+\s+rounds?\b[^,]*",
+                "",
+                display_notes,
+                flags=re.IGNORECASE,
+            ).strip(" ,;—–-")
+        if display_notes:
+            lines.append(f'   * "{display_notes}"')
         if m.rx_weight and m.scaled_weight:
             lines.append(f"   * Rx: {m.rx_weight} / Scaled: {m.scaled_weight}")
         elif m.rx_weight:
@@ -139,7 +148,33 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     # 4 — Main WOD movement panels
     if wod_movements:
         body = "Workout Sections (left/middle panels with images):\n\n"
-        body += _format_movement_block(wod_movements, numbered=True)
+        # Group by round_group when explicit metadata exists; fall back to flat list.
+        rg_map: dict[int, list] = {}
+        ungrouped_wod: list = []
+        for m in wod_movements:
+            if m.round_group > 0:
+                if m.round_group not in rg_map:
+                    rg_map[m.round_group] = []
+                rg_map[m.round_group].append(m)
+            else:
+                ungrouped_wod.append(m)
+
+        if rg_map:
+            prompt_lines: list[str] = []
+            if ungrouped_wod:
+                prompt_lines.append(_format_movement_block(ungrouped_wod, numbered=True))
+            for rg_num in sorted(rg_map):
+                group = rg_map[rg_num]
+                label = group[0].round_group_label or f"Group {rg_num}"
+                note = group[0].round_group_note
+                header = f'"{label.upper()}"'
+                if note:
+                    header += f' — {note}'
+                prompt_lines.append(header)
+                prompt_lines.append(_format_movement_block(group, numbered=True))
+            body += "\n\n".join(prompt_lines)
+        else:
+            body += _format_movement_block(wod_movements, numbered=True)
         sections.append(body)
 
     # 5 — Finisher panel (conditional)

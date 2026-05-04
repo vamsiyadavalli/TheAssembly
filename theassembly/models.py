@@ -38,6 +38,9 @@ class Movement:
     finisher_part: int = 0
     finisher_part_type: str = ""
     finisher_part_title: str = ""
+    round_group: int = 0
+    round_group_label: str = ""
+    round_group_note: str = ""
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Movement":
@@ -50,6 +53,11 @@ class Movement:
             part = int(raw_part)
         except (TypeError, ValueError):
             part = 0
+        raw_rg = normalized.get("round_group", 0)
+        try:
+            rg = int(raw_rg)
+        except (TypeError, ValueError):
+            rg = 0
         return cls(
             name=name,
             reps=str(normalized.get("reps", "")).strip(),
@@ -60,6 +68,9 @@ class Movement:
             finisher_part=part,
             finisher_part_type=str(normalized.get("finisher_part_type", "")).strip(),
             finisher_part_title=str(normalized.get("finisher_part_title", "")).strip(),
+            round_group=rg,
+            round_group_label=str(normalized.get("round_group_label", "")).strip(),
+            round_group_note=str(normalized.get("round_group_note", "")).strip(),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -80,6 +91,12 @@ class Movement:
             result["finisher_part_type"] = self.finisher_part_type
         if self.finisher_part_title:
             result["finisher_part_title"] = self.finisher_part_title
+        if self.round_group:
+            result["round_group"] = self.round_group
+        if self.round_group_label:
+            result["round_group_label"] = self.round_group_label
+        if self.round_group_note:
+            result["round_group_note"] = self.round_group_note
         return result
 
 
