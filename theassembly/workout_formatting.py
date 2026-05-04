@@ -10,6 +10,7 @@ output can be embedded in Streamlit, Jinja templates, or any other surface.
 """
 from __future__ import annotations
 
+import re as _re
 from html import escape
 from typing import TYPE_CHECKING
 
@@ -160,25 +161,77 @@ def _render_wod_block(mvmts: list["Movement"]) -> str:
     if not groups:
         # No explicit grouping — legacy flat list.
         rows = "".join(_movement_row(m) for m in mvmts)
-        return f'<div class="movement-list">{rows}</div>'
+        inner = f'<div class="movement-list">{rows}</div>'
+    else:
+        html_pieces: list[str] = []
 
-    html_pieces: list[str] = []
+        # Ungrouped movements first (e.g. buy-in reps before the round block).
+        if ungrouped:
+            rows = "".join(_movement_row(m) for m in ungrouped)
+            html_pieces.append(f'<div class="movement-list">{rows}</div>')
 
-    # Ungrouped movements first (e.g. buy-in reps before the round block).
-    if ungrouped:
-        rows = "".join(_movement_row(m) for m in ungrouped)
-        html_pieces.append(f'<div class="movement-list">{rows}</div>')
+        for group_num in sorted(groups):
+            group_mvmts = groups[group_num]
+            first = group_mvmts[0]
+            label = first.round_group_label or f"Group {group_num}"
+            note = first.round_group_note
+            html_pieces.append(_wod_round_group_header(label, note))
+            rows = "".join(_movement_row(m, in_round_group=True) for m in group_mvmts)
+            html_pieces.append(f'<div class="movement-list wod-round-group-list">{rows}</div>')
 
-    for group_num in sorted(groups):
-        group_mvmts = groups[group_num]
-        first = group_mvmts[0]
-        label = first.round_group_label or f"Group {group_num}"
-        note = first.round_group_note
-        html_pieces.append(_wod_round_group_header(label, note))
-        rows = "".join(_movement_row(m, in_round_group=True) for m in group_mvmts)
-        html_pieces.append(f'<div class="movement-list wod-round-group-list">{rows}</div>')
+        inner = "".join(html_pieces)
 
-    return "".join(html_pieces)
+    return (
+        f'<div class="movement-wod-block">'
+        f'<div class="movement-section-label" style="color:#94a3b8">WOD</div>'
+        f'{inner}'
+        f'</div>'
+    )
+
+
+def _abbrev_weight_part(s: str) -> str:
+    """Abbreviate a single gender's weight/equipment string."""
+    s = _re.sub(r"\s*lbs\b", "#", s)
+    s = _re.sub(r"\s*\bBox\b", "", s)
+    return s.strip()
+
+
+def _abbreviate_weight(text: str) -> "tuple[str, str | None]":
+    """Return (men_abbrev, women_abbrev_or_None) for a weight string.
+
+    Handles gender-split strings like ``"Men 40 lbs / Women 25 lbs"`` and
+    plain strings like ``"55 lbs"``.  Returns the women portion as ``None``
+    when no gender split is detected.
+    """
+    parts = text.split(" / ", 1)
+    if (
+        len(parts) == 2
+        and parts[0].startswith("Men ")
+        and parts[1].startswith("Women ")
+    ):
+        return (
+            _abbrev_weight_part(parts[0][4:]),
+            _abbrev_weight_part(parts[1][6:]),
+        )
+    return (_abbrev_weight_part(text), None)
+
+
+def _badge_html(text: str, css_class: str) -> str:
+    """Return a badge <span> with abbreviated, optionally colour-coded weight.
+
+    Men/Women splits are rendered as blue/rose inner spans so athletes can
+    identify their weight at a glance without needing the M/W labels.
+    """
+    men, women = _abbreviate_weight(text)
+    if women is not None:
+        inner = (
+            f'<span class="badge-men">{escape(men)}</span>'
+            f'<span class="badge-sep"> / </span>'
+            f'<span class="badge-women">{escape(women)}</span>'
+        )
+    else:
+        inner = escape(men)
+    return f'<span class="{css_class}">{inner}</span>'
 
 
 def _wod_round_group_header(label: str, note: str = "") -> str:
@@ -198,9 +251,9 @@ def _movement_row(m: "Movement", *, in_round_group: bool = False) -> str:
     name_html = f'<span class="mvmt-name">{escape(m.name)}</span>'
     badges = ""
     if m.rx_weight:
-        badges += f'<span class="rx-badge">{escape(m.rx_weight)}</span>'
+        badges += _badge_html(m.rx_weight, "rx-badge")
     if m.scaled_weight:
-        badges += f'<span class="scaled-badge">{escape(m.scaled_weight)}</span>'
+        badges += _badge_html(m.scaled_weight, "scaled-badge")
     badges_html = f'<span class="movement-badges">{badges}</span>' if badges else ""
 
     # When a movement is explicitly assigned to a finisher part, suppress any
