@@ -108,6 +108,39 @@ CUSTOM_CSS = """
     }
     @media (max-width: 720px) {
         .page-grid { grid-template-columns: 1fr; }
+        .movement-row-main {
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 0.28rem;
+        }
+        .movement-row-left {
+            width: 100%;
+        }
+        .movement-badges {
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: flex-start;
+            gap: 0.3rem;
+        }
+        .rx-badge,
+        .scaled-badge {
+            max-width: 100%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .finisher-part-header,
+        .wod-round-group-header {
+            flex-wrap: wrap;
+            align-items: flex-start;
+            row-gap: 0.2rem;
+            column-gap: 0.5rem;
+        }
+        .finisher-part-detail,
+        .wod-round-group-note {
+            width: 100%;
+        }
     }
     .col-main { min-width: 0; }
     .col-side { min-width: 0; }
