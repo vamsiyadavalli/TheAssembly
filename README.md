@@ -256,6 +256,56 @@ PYTHONPATH=. pytest tests/ -q
 
 ---
 
+## 🏋️ AI Workout Image Generation (Gemini)
+
+TheAssembly can generate a banner-style AI image for each day's workout using **Gemini 2.5 Flash Image** via the Gemini Developer API. Generated images are stored in the `TheAssemblyData` repo and automatically displayed in the app when present.
+
+### Setup
+
+Set your API key in the environment:
+
+```bash
+export GEMINI_API_KEY=your_key_here
+# or use the fallback name:
+export GOOGLE_API_KEY=your_key_here
+```
+
+### Generate an image for a single date
+
+```bash
+# From TheAssembly/ repo root:
+python tools/generate_workout_image.py --date 2026-04-28 --mode gemini
+```
+
+Output: `../TheAssemblyData/photos/ai/2026-04-28.png`
+
+### Generate images for a date range
+
+```bash
+python tools/generate_workout_image.py --date-range 2026-04-28:2026-05-02 --mode gemini
+```
+
+Each date is processed independently — failures are reported per date and do not abort the rest of the batch.
+
+### Preview the prompt without calling the API
+
+```bash
+python tools/generate_workout_image.py --date 2026-04-28 --mode prompt
+```
+
+### Optional environment overrides
+
+| Variable | Default | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | — | Gemini Developer API key (required) |
+| `GOOGLE_API_KEY` | — | Fallback if `GEMINI_API_KEY` is not set |
+| `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-preview-04-17` | Model override |
+| `GEMINI_IMAGE_ASPECT_RATIO` | `16:9` | Aspect ratio for the generated image |
+
+> **Note:** Generated images include a SynthID watermark per Gemini's image generation policy.
+
+---
+
 ## 📊 Analytics (optional)
 
 TheAssembly supports **opt-in analytics** via Google Analytics 4 (GA4) and Microsoft Clarity. Analytics is **disabled by default** — no tracking runs unless you explicitly set `ANALYTICS_ENABLED = true`.

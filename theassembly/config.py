@@ -15,6 +15,9 @@ class AppConfig:
     workouts_repo_branch: str
     admin_password: str | None
     timezone_name: str
+    gemini_api_key: str | None
+    gemini_image_model: str
+    gemini_image_aspect_ratio: str
 
     @property
     def github_enabled(self) -> bool:
@@ -23,6 +26,10 @@ class AppConfig:
     @property
     def admin_enabled(self) -> bool:
         return bool(self.admin_password)
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
 
 
 def _lookup_setting(name: str, secrets: Mapping[str, Any] | None, default: str | None = None) -> str | None:
@@ -38,6 +45,7 @@ def _lookup_setting(name: str, secrets: Mapping[str, Any] | None, default: str |
 
 
 def load_config(secrets: Mapping[str, Any] | None = None) -> AppConfig:
+    gemini_api_key = _lookup_setting("GEMINI_API_KEY", secrets) or _lookup_setting("GOOGLE_API_KEY", secrets)
     return AppConfig(
         github_token=_lookup_setting("GITHUB_TOKEN", secrets),
         workouts_repo_owner=_lookup_setting("WORKOUTS_REPO_OWNER", secrets),
@@ -48,4 +56,8 @@ def load_config(secrets: Mapping[str, Any] | None = None) -> AppConfig:
         workouts_repo_branch=_lookup_setting("WORKOUTS_REPO_BRANCH", secrets, "main") or "main",
         admin_password=_lookup_setting("ADMIN_PASSWORD", secrets),
         timezone_name=_lookup_setting("APP_TIMEZONE", secrets, "America/New_York") or "America/New_York",
+        gemini_api_key=gemini_api_key,
+        gemini_image_model=_lookup_setting("GEMINI_IMAGE_MODEL", secrets, "gemini-2.5-flash-image")
+        or "gemini-2.5-flash-image",
+        gemini_image_aspect_ratio=_lookup_setting("GEMINI_IMAGE_ASPECT_RATIO", secrets, "16:9") or "16:9",
     )
