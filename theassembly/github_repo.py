@@ -278,10 +278,31 @@ class GitHubDataRepository:
 
         payload = response.json()
         raw_content = payload.get("content", "").replace("\n", "").strip()
-        if not raw_content:
-            return None
+        raw_bytes: bytes
+        if raw_content:
+            raw_bytes = base64.b64decode(raw_content)
+        else:
+            # GitHub's contents API may omit inline "content" for larger files.
+            download_url = str(payload.get("download_url", "")).strip()
+            if not download_url:
+                return None
+            try:
+                download_response = requests.get(
+                    download_url,
+                    headers={
+                        "Authorization": f"Bearer {self.config.token}",
+                        "User-Agent": "TheAssembly",
+                    },
+                    timeout=30,
+                )
+            except requests.RequestException:
+                return None
+            if download_response.status_code >= 400:
+                return None
+            raw_bytes = download_response.content
+            if not raw_bytes:
+                return None
 
-        raw_bytes = base64.b64decode(raw_content)
         return f"data:image/png;base64,{base64.b64encode(raw_bytes).decode()}"
 
     def upload_photo(self, date_str: str, original_filename: str, content_bytes: bytes) -> None:

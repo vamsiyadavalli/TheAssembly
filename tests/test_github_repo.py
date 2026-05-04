@@ -216,5 +216,59 @@ class TestFetchPhotos(unittest.TestCase):
         self.assertEqual("2026-04-27-photo.jpg", result[0].filename)
 
 
+class TestFetchAiImage(unittest.TestCase):
+    def test_returns_data_uri_when_inline_content_present(self) -> None:
+        repo = _make_repo()
+        raw = b"\x89PNG\r\n\x1a\n" + b"a" * 32
+        encoded = base64.b64encode(raw).decode()
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {"content": encoded}
+
+        with patch("requests.get", return_value=contents_resp):
+            data_uri = repo.fetch_ai_image(date(2026, 5, 4))
+
+        self.assertIsNotNone(data_uri)
+        assert data_uri is not None
+        self.assertTrue(data_uri.startswith("data:image/png;base64,"))
+        self.assertEqual(raw, base64.b64decode(data_uri.split(",", 1)[1]))
+
+    def test_falls_back_to_download_url_when_inline_content_missing(self) -> None:
+        repo = _make_repo()
+        raw = b"\x89PNG\r\n\x1a\n" + b"b" * 16
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {
+            "content": "",
+            "download_url": "https://raw.example.com/2026-05-04.png",
+        }
+
+        download_resp = MagicMock()
+        download_resp.status_code = 200
+        download_resp.content = raw
+
+        with patch("requests.get", side_effect=[contents_resp, download_resp]):
+            data_uri = repo.fetch_ai_image(date(2026, 5, 4))
+
+        self.assertIsNotNone(data_uri)
+        assert data_uri is not None
+        self.assertTrue(data_uri.startswith("data:image/png;base64,"))
+        self.assertEqual(raw, base64.b64decode(data_uri.split(",", 1)[1]))
+
+    def test_returns_none_when_download_url_missing_and_no_inline_content(self) -> None:
+        repo = _make_repo()
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {"content": ""}
+
+        with patch("requests.get", return_value=contents_resp):
+            data_uri = repo.fetch_ai_image(date(2026, 5, 4))
+
+        self.assertIsNone(data_uri)
+
+
 if __name__ == "__main__":
     unittest.main()

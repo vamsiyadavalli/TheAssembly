@@ -271,20 +271,25 @@ CUSTOM_CSS = """
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        padding: 0.45rem 0 0.3rem 0;
-        border-top: 1px solid rgba(99, 102, 241, 0.22);
-        margin-top: 0.6rem;
-        margin-bottom: 0.15rem;
+        padding: 0.5rem 0 0.35rem 0;
+        border-top: 1px solid rgba(99, 102, 241, 0.35);
+        margin-top: 0.75rem;
+        margin-bottom: 0.2rem;
     }
     .wod-round-group-label {
-        font-size: 0.7rem;
+        display: inline-block;
+        font-size: 0.78rem;
         font-weight: 700;
-        color: #818cf8;
+        color: #a5b4fc;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.08em;
+        background: rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: 5px;
+        padding: 0.1rem 0.5rem;
     }
     .wod-round-group-note {
-        font-size: 0.68rem;
+        font-size: 0.7rem;
         color: #94a3b8;
         font-style: italic;
     }
