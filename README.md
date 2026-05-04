@@ -29,7 +29,7 @@ graph TD
         subgraph Package["theassembly/"]
             Config["config.py\nAppConfig · load_config()"]
             Models["models.py\nWorkoutRecord · CurrentState\nload_workouts() · serialize_workouts()"]
-            GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()"]
+            GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()\nfetch_ai_image() · fetch_photos()"]
             Schedule["schedule.py\nAthleteSlate · resolve_athlete_slate()\ndetect_logic_window()"]
         end
     end
@@ -37,6 +37,7 @@ graph TD
     subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
         WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
         StateJSON["current_state.json\n{ status: open | closed }"]
+        PhotosAI["photos/ai/\nYYYY-MM-DD.png"]
     end
 
     subgraph GitHubAPI["🐙 GitHub REST API"]
@@ -46,7 +47,7 @@ graph TD
     subgraph Secrets["🔑 Secrets / Environment"]
         Tokens["GITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nGITHUB_TOKEN (fallback)"]
         RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
-        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE"]
+        AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE\nGEMINI_API_KEY"]
     end
 
     subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
@@ -75,6 +76,16 @@ graph TD
     Secrets --> StreamlitApp
     Schedule --> TimeLogic
     CI -->|"reads"| PrivateDataRepo
+
+    subgraph CliTools["🤖 Image Generation"]
+        GenImgCLI["tools/generate_workout_image.py\n--mode gemini | prompt | poster"]
+    end
+
+    GeminiAPI["✨ Gemini Developer API"]
+    GenImgCLI -->|"generate_content"| GeminiAPI
+    GenImgCLI -->|"writes png"| PhotosAI
+    GHRepo -->|"GET photos/ai/:date"| ContentsAPI
+    ContentsAPI --> PhotosAI
 ```
 
 ## App screenshots

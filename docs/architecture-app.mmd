@@ -12,20 +12,21 @@ graph TD
         TokenCfg["GITHUB_READ_TOKEN → athlete app\nGITHUB_WRITE_TOKEN → admin app\n↓ both injected as GITHUB_TOKEN in-app"]
         RepoCfg["WORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nWORKOUTS_REPO_BRANCH\nWORKOUTS_FILE_PATH\nCURRENT_STATE_FILE_PATH"]
         AppCfg["ADMIN_PASSWORD\nAPP_TIMEZONE\n(default: America/New_York)"]
+        GeminiCfg["GEMINI_API_KEY\nGOOGLE_API_KEY (fallback)\nGEMINI_IMAGE_MODEL\nGEMINI_IMAGE_ASPECT_RATIO"]
     end
 
     subgraph Package["📦 theassembly/ package"]
         Config["config.py\nAppConfig dataclass\nload_config()\ngithub_enabled · admin_enabled"]
         Models["models.py\nWorkoutRecord · Movement · CurrentState\nPhotoRecord\nload_workouts() · serialize_workouts()\nfrom_dict() · to_dict()"]
-        GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts()\nsave_workouts()\nfetch_current_state()\nupsert_workout()"]
+        GHRepo["github_repo.py\nGitHubDataRepository\nfetch_workouts() · save_workouts()\nfetch_current_state() · upsert_workout()\nfetch_ai_image(date)\nfetch_photos(date)\n+ download_url fallback for large files"]
         Schedule["schedule.py\nAthleteSlate\nresolve_athlete_slate()\ndetect_logic_window()\nPREVIEW_START = 4:00 PM\nDAYTIME_CLOSE = 11:00 AM"]
         Analytics["analytics.py\nGA4 Measurement Protocol\nMicrosoft Clarity\nHTML tag injection"]
         Weather["weather.py\nOpen-Meteo forecast\nhourly 5–8 AM window\nFahrenheit · mph"]
         Jokes["jokes.py\nJokeAPI v2\nsafe-mode two-part jokes"]
         HNTopics["hn_topics.py\nHacker News Firebase API\ntop 30 stories + comments\nengagement-ranked topics"]
         WktFormatting["workout_formatting.py\nHTML renderer\nsection grouping\n(WOD vs. Finisher)"]
-        WktImage["workout_image.py\nAI image prompt builder\n⚠️ no external API calls"]
-        WktPoster["workout_poster.py\nPillow PNG poster\n1024×576 · local assets\n⚠️ no external API calls"]
+        WktImage["workout_image.py\nbuild_image_prompt()\ngenerate_gemini_image()\nGeminiImageError · GeminiAPIError\nretry + error classification"]
+        WktPoster["workout_poster.py\nPillow PNG poster (fallback)\n1024×576 · local assets\n⚠️ no external API calls"]
     end
 
     subgraph TimeLogic["⏰ Time-Based Logic Windows (America/New_York)"]
@@ -41,6 +42,7 @@ graph TD
     subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
         WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
         StateJSON["current_state.json\n{ status: open | closed }"]
+        PhotosAI["photos/ai/YYYY-MM-DD.png\n+ .meta.json"]
     end
 
     subgraph ExternalAPIs["🌐 External APIs"]
@@ -49,6 +51,7 @@ graph TD
         HNFirebase["Hacker News Firebase\nhacker-news.firebaseio.com/v0/\ntopstories + item endpoints"]
         GA4["Google Analytics 4\ngoogle-analytics.com/mp/collect\nMeasurement Protocol (server-side)\ngtag.js (client-side injection)"]
         Clarity["Microsoft Clarity\nclarity.ms/tag/{clarity_id}\nclient-side script injection"]
+        GeminiAPI["✨ Gemini Developer API\ngenerativelanguage.googleapis.com\nSDK: google-genai · IMAGE modality\naspect_ratio: 16:9"]
     end
 
     Secrets --> Config
@@ -72,3 +75,14 @@ graph TD
     HNTopics -->|"GET top stories"| HNFirebase
     Analytics -->|"POST events"| GA4
     Analytics -->|"inject script"| Clarity
+
+    subgraph Tools["🤖 Image Generation CLI (Developer Tool)"]
+        GenerateImageCLI["tools/generate_workout_image.py\n--mode gemini | prompt | poster\n--date · --date-range START:END\n--overwrite · --fallback"]
+    end
+
+    GeminiCfg --> Config
+    GenerateImageCLI --> WktImage
+    WktImage -->|"generate_content · IMAGE modality"| GeminiAPI
+    GenerateImageCLI -->|"writes png + meta.json"| PhotosAI
+    GHRepo -->|"GET photos/ai/:date.png"| ContentsAPI
+    ContentsAPI --> PhotosAI

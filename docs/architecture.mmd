@@ -6,7 +6,7 @@ graph TD
         GymRepo["YourGymName app repo\n(forked from template)"]
         GymData["YourGymName-data\n(private — YOUR IP)"]
         PAT["GitHub PAT\nRead-only → athlete app\nRead+Write → admin app"]
-        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN → athlete\nGITHUB_WRITE_TOKEN → admin\n(both map to GITHUB_TOKEN in-app)\nWORKOUTS_REPO_OWNER etc."]
+        StreamlitSecrets["Streamlit Cloud Secrets\nGITHUB_READ_TOKEN → athlete\nGITHUB_WRITE_TOKEN → admin\n(both map to GITHUB_TOKEN in-app)\nWORKOUTS_REPO_OWNER etc.\nGEMINI_API_KEY"]
         Template --> GymRepo
         DataTemplate --> GymData
         PAT --> StreamlitSecrets
@@ -19,12 +19,13 @@ graph TD
     end
 
     subgraph AppCode["📦 Application Code — see architecture-app.mmd"]
-        AppNode["streamlit_app.py + theassembly/\nconfig · models · github_repo · schedule\nanalytics · weather · jokes · hn_topics\nworkout_formatting · workout_poster"]
+        AppNode["streamlit_app.py + theassembly/\nconfig · models · github_repo · schedule\nanalytics · weather · jokes · hn_topics\nworkout_formatting · workout_image · workout_poster"]
     end
 
     subgraph PrivateDataRepo["🔒 YourGymName-data (Private GitHub Repo)"]
         WorkoutsJSON["workouts.json\narray of WorkoutRecord objects"]
         StateJSON["current_state.json\n{ status: open | closed }"]
+        PhotosAI["photos/ai/\nYYYY-MM-DD.png + .meta.json\n(AI-generated workout images)"]
     end
 
     subgraph GitHubAPI["🐙 GitHub REST API (Contents API)"]
@@ -50,4 +51,16 @@ graph TD
     ContentsAPI --> StateJSON
     AppCode --> TimeLogic
     CI -->|"reads + validates"| PrivateDataRepo
+
+    subgraph CliTools["🤖 Image Generation CLI (Developer Tool)"]
+        GenerateImageCLI["tools/generate_workout_image.py\n--mode gemini | prompt | poster\n--date · --date-range START:END\n--overwrite · --fallback"]
+    end
+
+    GeminiAPI["✨ Gemini Developer API\ngenerativelanguage.googleapis.com\nSDK: google-genai\nGEMINI_API_KEY + GEMINI_IMAGE_MODEL"]
+
+    AppCode -->|"GET photos/ai/:date.png\n(display in athlete view)"| ContentsAPI
+    ContentsAPI --> PhotosAI
+    GenerateImageCLI -->|"generate_content\nIMAGE modality"| GeminiAPI
+    GeminiAPI -->|"PNG bytes"| GenerateImageCLI
+    GenerateImageCLI -->|"writes png + meta.json\nvia local file system"| PhotosAI
 
