@@ -1050,7 +1050,7 @@ def _authenticate_admin(config: AppConfig) -> bool:
         return True
 
     password = st.sidebar.text_input("Admin password", type="password", key="admin_password_input")
-    if st.sidebar.button("Unlock admin", use_container_width=True):
+    if st.sidebar.button("Unlock admin", width='stretch'):
         if hmac.compare_digest(password, config.admin_password or ""):
             st.session_state["admin_authenticated"] = True
             _ga4_id, _ga4_secret = _analytics_cfg()
@@ -1100,7 +1100,7 @@ def _render_record_list(records: list[WorkoutRecord], heading: str, query: str) 
             row["scaled"] = " / ".join(m.scaled_weight for m in record.movements if m.scaled_weight) or "—"
         table_rows.append(row)
 
-    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+    st.dataframe(table_rows, width='stretch', hide_index=True)
 
 
 def _render_admin_console(
@@ -1155,7 +1155,7 @@ def _render_admin_console(
             ),
         )
         status = st.selectbox("Status", ["scheduled", "released", "archived"])
-        submitted = st.form_submit_button("Stage New Workout", use_container_width=True)
+        submitted = st.form_submit_button("Stage New Workout", width='stretch')
 
     if submitted:
         import json as _json
@@ -1234,7 +1234,7 @@ def _render_admin_console(
         accept_multiple_files=True,
         key="photo_upload_files",
     )
-    if st.button("Upload Photos", disabled=not uploaded_files, use_container_width=True):
+    if st.button("Upload Photos", disabled=not uploaded_files, width='stretch'):
         success_count = 0
         for uploaded_file in uploaded_files:
             try:
