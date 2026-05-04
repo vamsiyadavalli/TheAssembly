@@ -288,5 +288,76 @@ class MultiPartFinisherPromptTests(unittest.TestCase):
         self.assertEqual(build_image_prompt(workout), build_image_prompt(workout))
 
 
+class WodRoundGroupPromptTests(unittest.TestCase):
+    """Grouped WOD movements should share a single round header in the image prompt."""
+
+    def _grouped_workout(self) -> WorkoutRecord:
+        return _make_workout(
+            content="2 Sets For Time — Push-Up Buy-In + DB Power Snatch / Air Squat",
+            movements=[
+                {"name": "Push-Ups", "reps": "60", "notes": "Each set buy-in"},
+                {"name": "Alternating Dumbbell Power Snatch", "reps": "6",
+                 "rx_weight": "Men 40 lbs",
+                 "round_group": 1, "round_group_label": "10 Rounds"},
+                {"name": "Air Squat", "reps": "12",
+                 "round_group": 1, "round_group_label": "10 Rounds"},
+            ],
+        )
+
+    def test_group_label_appears_once(self) -> None:
+        prompt = build_image_prompt(self._grouped_workout())
+        self.assertEqual(prompt.upper().count("10 ROUNDS"), 1)
+
+    def test_all_wod_movements_in_prompt(self) -> None:
+        prompt = build_image_prompt(self._grouped_workout())
+        self.assertIn("Push-Ups", prompt)
+        self.assertIn("Alternating Dumbbell Power Snatch", prompt)
+        self.assertIn("Air Squat", prompt)
+
+    def test_round_notes_not_duplicated_in_group_context(self) -> None:
+        """Movement notes that just repeat the round count must be suppressed."""
+        workout = _make_workout(
+            content="KB Swing + Wall Ball For Time",
+            movements=[
+                {"name": "KB Swing", "reps": "15", "notes": "10 rounds",
+                 "round_group": 1, "round_group_label": "10 Rounds"},
+                {"name": "Wall Ball", "reps": "15", "notes": "10 rounds",
+                 "round_group": 1, "round_group_label": "10 Rounds"},
+            ],
+        )
+        prompt = build_image_prompt(workout)
+        # Label appears once from the group header, not from per-movement notes
+        self.assertEqual(prompt.upper().count("10 ROUNDS"), 1)
+
+    def test_no_group_metadata_renders_flat(self) -> None:
+        """Legacy movements with no round_group still render as flat numbered list."""
+        workout = _make_workout(
+            movements=[
+                {"name": "Pull-ups", "reps": "10", "notes": "5 rounds"},
+                {"name": "Box Jumps", "reps": "15"},
+            ],
+        )
+        prompt = build_image_prompt(workout)
+        self.assertIn("Pull-ups", prompt)
+        self.assertIn("Box Jumps", prompt)
+
+    def test_group_note_appears_in_prompt(self) -> None:
+        workout = _make_workout(
+            movements=[
+                {"name": "Farmer Step Up", "reps": "30",
+                 "round_group": 1, "round_group_label": "3 Rounds",
+                 "round_group_note": "Rest 2:00 between rounds"},
+                {"name": "Run", "reps": "400m",
+                 "round_group": 1, "round_group_label": "3 Rounds"},
+            ],
+        )
+        prompt = build_image_prompt(workout)
+        self.assertIn("Rest 2:00 between rounds", prompt)
+
+    def test_prompt_is_deterministic(self) -> None:
+        workout = self._grouped_workout()
+        self.assertEqual(build_image_prompt(workout), build_image_prompt(workout))
+
+
 if __name__ == "__main__":
     unittest.main()

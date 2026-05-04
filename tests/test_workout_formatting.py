@@ -105,5 +105,86 @@ class MultiPartFinisherRenderingTests(unittest.TestCase):
         self.assertIn("Push-Ups", html)
 
 
+class WodRoundGroupRenderingTests(unittest.TestCase):
+    """Movements with round_group metadata should render under a shared group header."""
+
+    def _may4_movements(self) -> list[dict]:
+        """May 4 pattern: buy-in + 10-round pair."""
+        return [
+            {"name": "Push-Ups", "reps": "60", "notes": "Each set buy-in"},
+            {"name": "Alternating Dumbbell Power Snatch", "reps": "6",
+             "round_group": 1, "round_group_label": "10 Rounds"},
+            {"name": "Air Squat", "reps": "12",
+             "round_group": 1, "round_group_label": "10 Rounds"},
+        ]
+
+    def test_group_header_appears_once(self) -> None:
+        html = format_workout_html(_record(self._may4_movements()))
+        self.assertEqual(html.count("10 Rounds"), 1)
+
+    def test_both_movements_present(self) -> None:
+        html = format_workout_html(_record(self._may4_movements()))
+        self.assertIn("Alternating Dumbbell Power Snatch", html)
+        self.assertIn("Air Squat", html)
+
+    def test_group_header_css_class(self) -> None:
+        html = format_workout_html(_record(self._may4_movements()))
+        self.assertIn("wod-round-group-header", html)
+        self.assertIn("wod-round-group-label", html)
+
+    def test_ungrouped_buy_in_still_renders(self) -> None:
+        html = format_workout_html(_record(self._may4_movements()))
+        self.assertIn("Push-Ups", html)
+
+    def test_group_note_renders(self) -> None:
+        movements = [
+            {"name": "Alternating Farmer Step Up", "reps": "30",
+             "round_group": 1, "round_group_label": "3 Rounds",
+             "round_group_note": "Rest 2:00 between rounds"},
+            {"name": "Run", "reps": "400m",
+             "round_group": 1, "round_group_label": "3 Rounds"},
+        ]
+        html = format_workout_html(_record(movements))
+        self.assertIn("Rest 2:00 between rounds", html)
+        self.assertIn("wod-round-group-note", html)
+
+    def test_legacy_movements_render_flat(self) -> None:
+        """Records with no round_group fields should render exactly as before."""
+        rec = _record([
+            {"name": "Pull-ups", "reps": "10", "notes": "5 rounds"},
+            {"name": "Box Jumps", "reps": "15", "notes": "5 rounds"},
+        ])
+        html = format_workout_html(rec)
+        self.assertNotIn("wod-round-group-header", html)
+        self.assertIn("Pull-ups", html)
+        self.assertIn("Box Jumps", html)
+
+    def test_multiple_groups_render_all_headers(self) -> None:
+        movements = [
+            {"name": "Squat Clean", "reps": "5",
+             "round_group": 1, "round_group_label": "5 Rounds"},
+            {"name": "Ring Dips", "reps": "10",
+             "round_group": 2, "round_group_label": "3 Rounds"},
+        ]
+        html = format_workout_html(_record(movements))
+        self.assertIn("5 Rounds", html)
+        self.assertIn("3 Rounds", html)
+        self.assertEqual(html.count("wod-round-group-header"), 2)
+
+    def test_finisher_grouping_unaffected(self) -> None:
+        """Adding round_group to WOD movements must not disturb finisher part grouping."""
+        movements = [
+            {"name": "Snatch", "reps": "6", "round_group": 1, "round_group_label": "10 Rounds"},
+            {"name": "Air Squat", "reps": "12", "round_group": 1, "round_group_label": "10 Rounds"},
+            {"name": "Flutter Kicks", "reps": "20s", "section": "Finisher",
+             "finisher_part": 1, "finisher_part_title": "4:00 Tabata"},
+            {"name": "Pull Ups", "reps": "6", "section": "Finisher",
+             "finisher_part": 2, "finisher_part_title": "12:00 EMOM"},
+        ]
+        html = format_workout_html(_record(movements))
+        self.assertIn("wod-round-group-header", html)
+        self.assertIn("finisher-part-header", html)
+
+
 if __name__ == "__main__":
     unittest.main()

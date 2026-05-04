@@ -71,8 +71,7 @@ def _render_structured(header: str, movements: tuple["Movement", ...]) -> str:
         if section_name:
             parts.append(_render_section_block(section_name, mvmts))
         else:
-            rows = "".join(_movement_row(m) for m in mvmts)
-            parts.append(f'<div class="movement-list">{rows}</div>')
+            parts.append(_render_wod_block(mvmts))
 
     return "".join(parts)
 
@@ -145,7 +144,56 @@ def _finisher_part_header(label: str, detail: str, *, is_first: bool = False) ->
     )
 
 
-def _movement_row(m: "Movement") -> str:
+def _render_wod_block(mvmts: list["Movement"]) -> str:
+    """Render the primary WOD movement list, grouping by round_group when present."""
+    # Collect movements by round_group (> 0 = grouped, 0 = ungrouped).
+    groups: dict[int, list["Movement"]] = {}
+    ungrouped: list["Movement"] = []
+    for m in mvmts:
+        if m.round_group > 0:
+            if m.round_group not in groups:
+                groups[m.round_group] = []
+            groups[m.round_group].append(m)
+        else:
+            ungrouped.append(m)
+
+    if not groups:
+        # No explicit grouping — legacy flat list.
+        rows = "".join(_movement_row(m) for m in mvmts)
+        return f'<div class="movement-list">{rows}</div>'
+
+    html_pieces: list[str] = []
+
+    # Ungrouped movements first (e.g. buy-in reps before the round block).
+    if ungrouped:
+        rows = "".join(_movement_row(m) for m in ungrouped)
+        html_pieces.append(f'<div class="movement-list">{rows}</div>')
+
+    for group_num in sorted(groups):
+        group_mvmts = groups[group_num]
+        first = group_mvmts[0]
+        label = first.round_group_label or f"Group {group_num}"
+        note = first.round_group_note
+        html_pieces.append(_wod_round_group_header(label, note))
+        rows = "".join(_movement_row(m, in_round_group=True) for m in group_mvmts)
+        html_pieces.append(f'<div class="movement-list wod-round-group-list">{rows}</div>')
+
+    return "".join(html_pieces)
+
+
+def _wod_round_group_header(label: str, note: str = "") -> str:
+    note_html = (
+        f'<span class="wod-round-group-note">{escape(note)}</span>' if note else ""
+    )
+    return (
+        f'<div class="wod-round-group-header">'
+        f'<span class="wod-round-group-label">{escape(label)}</span>'
+        f'{note_html}'
+        f'</div>'
+    )
+
+
+def _movement_row(m: "Movement", *, in_round_group: bool = False) -> str:
     reps_html = f'<span class="mvmt-reps">{escape(m.reps)}</span>' if m.reps else ""
     name_html = f'<span class="mvmt-name">{escape(m.name)}</span>'
     badges = ""
@@ -161,6 +209,17 @@ def _movement_row(m: "Movement") -> str:
     if m.finisher_part > 0 and display_notes:
         import re as _re
         display_notes = _re.sub(r"^Part\s+\d+\s*[—\-–]\s*", "", display_notes).strip()
+
+    # When rendered inside a round group, the group header already carries the
+    # rounds label — suppress it from per-movement notes to avoid repetition.
+    if in_round_group and display_notes:
+        import re as _re
+        display_notes = _re.sub(
+            r"^(then\s+)?\d+\s+rounds?\b[^,]*",
+            "",
+            display_notes,
+            flags=_re.IGNORECASE,
+        ).strip(" ,;—–-")
 
     notes_html = f'<div class="mvmt-notes">{escape(display_notes)}</div>' if display_notes else ""
 

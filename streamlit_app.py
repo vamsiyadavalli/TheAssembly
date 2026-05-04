@@ -247,6 +247,31 @@ CUSTOM_CSS = """
     .finisher-part-list {
         margin-bottom: 0.15rem;
     }
+    /* ---- WOD round group header ---- */
+    .wod-round-group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 0.45rem 0 0.3rem 0;
+        border-top: 1px solid rgba(99, 102, 241, 0.22);
+        margin-top: 0.6rem;
+        margin-bottom: 0.15rem;
+    }
+    .wod-round-group-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #818cf8;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+    .wod-round-group-note {
+        font-size: 0.68rem;
+        color: #94a3b8;
+        font-style: italic;
+    }
+    .wod-round-group-list {
+        margin-bottom: 0.15rem;
+    }
     /* ---- AI Poster: main-column click-to-expand ---- */
     .ai-poster-expand {
         display: block;
