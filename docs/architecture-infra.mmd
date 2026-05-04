@@ -7,7 +7,7 @@ graph TD
     subgraph DockerLocal["🐳 Docker — Local Development"]
         DCAthletePort["athlete service\nport 8501 → 8501\nstreamlit run athlete_app.py"]
         DCAdminPort["admin service\nport 8502 → 8501\nstreamlit run admin_app.py"]
-        DCOverrideEnv["docker-compose.override.env\n(secrets file, git-ignored)"]
+        DCOverrideEnv["docker-compose.override.env\n(secrets file, git-ignored)\nGITHUB_TOKEN · GEMINI_API_KEY etc."]
         DCOverrideEnv --> DCAthletePort
         DCOverrideEnv --> DCAdminPort
     end
@@ -15,7 +15,7 @@ graph TD
     subgraph StreamlitCloud["☁️ Streamlit Community Cloud (Production)"]
         SCAthleteApp["Athlete App\nasm-athlete.streamlit.app\napp_role=athlete"]
         SCAdminApp["Admin App\nasm-control.streamlit.app\napp_role=admin"]
-        SCSecrets["Streamlit Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc."]
+        SCSecrets["Streamlit Secrets\nGITHUB_READ_TOKEN\nGITHUB_WRITE_TOKEN\nWORKOUTS_REPO_OWNER etc.\nGEMINI_API_KEY"]
         SCSecrets --> SCAthleteApp
         SCSecrets --> SCAdminApp
     end
@@ -24,7 +24,7 @@ graph TD
         subgraph AppsNS["namespace: theassembly-apps"]
             AthleteDeployment["athlete Deployment\nghcr.io/your-org/theassembly:latest\ncmd: streamlit run athlete_app.py\nport 8501 · replicas: 1\nCPU 100m–500m · Mem 256Mi–512Mi"]
             AdminDeployment["admin Deployment\nghcr.io/your-org/theassembly:latest\ncmd: streamlit run admin_app.py\nport 8501 · replicas: 1\nCPU 100m–500m · Mem 256Mi–512Mi"]
-            AppSecret["Secret: app-secret\nGITHUB_TOKEN\nADMIN_PASSWORD etc."]
+            AppSecret["Secret: app-secret\nGITHUB_TOKEN · ADMIN_PASSWORD\nGEMINI_API_KEY etc."]
             AppConfigMap["ConfigMap: shared-config\nWORKOUTS_REPO_OWNER\nWORKOUTS_REPO_NAME\nAPP_TIMEZONE etc."]
             AppSecret --> AthleteDeployment
             AppSecret --> AdminDeployment
