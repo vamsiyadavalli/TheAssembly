@@ -102,13 +102,32 @@ CUSTOM_CSS = """
         gap: 1rem;
         align-items: start;
         max-width: 1040px;
+        width: 100%;
         margin: 0 auto;
+        overflow-x: hidden;
     }
     @media (max-width: 720px) {
         .page-grid { grid-template-columns: 1fr; }
     }
+    .col-main { min-width: 0; }
+    .col-side { min-width: 0; }
     .col-main > * + * { margin-top: 0.75rem; }
     .col-side > * + * { margin-top: 0.75rem; }
+    /* ---- Site title ---- */
+    .site-title-wrapper {
+        max-width: 1040px;
+        width: 100%;
+        margin: 0 auto 0.6rem auto;
+    }
+    .site-title {
+        font-size: 2rem;
+        font-weight: 800;
+        color: #f8fafc;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+        margin: 0;
+        padding: 0;
+    }
     /* ---- Weather strip ---- */
     .weather-section-label {
         font-size: 0.72rem;
@@ -272,43 +291,9 @@ CUSTOM_CSS = """
     .wod-round-group-list {
         margin-bottom: 0.15rem;
     }
-    /* ---- AI Poster: main-column click-to-expand ---- */
-    .ai-poster-expand {
-        display: block;
-    }
-    .ai-poster-expand > summary {
-        cursor: pointer;
-        list-style: none;
-        position: relative;
-        display: block;
-    }
-    .ai-poster-expand > summary::-webkit-details-marker { display: none; }
-    .ai-poster-thumb {
+    /* ---- AI Poster ---- */
+    .ai-poster-img {
         width: 100%;
-        max-width: 760px;
-        border-radius: 10px;
-        display: block;
-        opacity: 0.88;
-        transition: opacity 0.18s;
-    }
-    .ai-poster-expand > summary:hover .ai-poster-thumb { opacity: 1; }
-    .ai-poster-hint {
-        position: absolute;
-        bottom: 0.45rem;
-        right: 0.45rem;
-        background: rgba(2, 6, 23, 0.72);
-        color: #94a3b8;
-        font-size: 0.68rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 5px;
-        letter-spacing: 0.05em;
-        pointer-events: none;
-    }
-    .ai-poster-expand[open] > summary .ai-poster-hint { display: none; }
-    .ai-poster-full {
-        width: 100%;
-        max-width: 760px;
-        margin-top: 0.5rem;
         border-radius: 10px;
         display: block;
     }
@@ -718,9 +703,9 @@ def _cached_fetch_ai_image_github(
     return repository.fetch_ai_image(_date.fromisoformat(target_date_iso))
 
 
-def _build_ai_image_html(workout_date_iso: str, config: "AppConfig") -> str:
-    """Return HTML for the Movement Visualisation card, or '' if no image exists."""
-    data_uri: str | None = None
+def _fetch_ai_image_bytes(workout_date_iso: str, config: "AppConfig") -> bytes | None:
+    """Return raw PNG bytes for the AI workout poster, or None if unavailable."""
+    import base64 as _b64
 
     if config.github_enabled and config.github_token:
         data_uri = _cached_fetch_ai_image_github(
@@ -731,35 +716,24 @@ def _build_ai_image_html(workout_date_iso: str, config: "AppConfig") -> str:
             config.workouts_repo_branch,
             config.photos_folder_path,
         )
-    else:
-        # Local dev fallback: read from sibling TheAssemblyData repo.
-        import base64 as _b64
-        local_path = (
-            Path(__file__).resolve().parent.parent
-            / "TheAssemblyData"
-            / "photos"
-            / "ai"
-            / f"{workout_date_iso}.png"
-        )
-        if local_path.exists():
-            raw = local_path.read_bytes()
-            data_uri = f"data:image/png;base64,{_b64.b64encode(raw).decode()}"
+        if data_uri and data_uri.startswith("data:image/png;base64,"):
+            try:
+                return _b64.b64decode(data_uri.split(",", 1)[1])
+            except Exception:
+                return None
+        return None
 
-    if not data_uri:
-        return ""
-
-    return (
-        f'<div class="panel-card" style="margin-top:0.75rem">'
-        f'<div class="weather-section-label" style="margin-bottom:0.6rem">🏋️ Movement Visualisation</div>'
-        f'<details class="ai-poster-expand">'
-        f'<summary>'
-        f'<img src="{data_uri}" class="ai-poster-thumb" alt="Workout poster preview">'
-        f'<span class="ai-poster-hint">Tap to expand</span>'
-        f'</summary>'
-        f'<img src="{data_uri}" class="ai-poster-full" alt="AI-generated workout visualisation">'
-        f'</details>'
-        f'</div>'
+    # Local dev fallback: read from sibling TheAssemblyData repo.
+    local_path = (
+        Path(__file__).resolve().parent.parent
+        / "TheAssemblyData"
+        / "photos"
+        / "ai"
+        / f"{workout_date_iso}.png"
     )
+    if local_path.exists():
+        return local_path.read_bytes()
+    return None
 
 
 def _build_photos_html(photos: list[PhotoRecord]) -> tuple[str, str]:
@@ -884,7 +858,10 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         st.session_state["_evt_page_view_fired"] = True
 
-    st.title("TheAssembly")
+    st.markdown(
+        '<div class="site-title-wrapper"><h1 class="site-title">TheAssembly</h1></div>',
+        unsafe_allow_html=True,
+    )
 
     # Pre-fetch both async data sources before building HTML.
     conversation_starter = _cached_fetch_hn_conversation_starter()
@@ -959,7 +936,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         ) if workout.stimulus else ""
 
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
-        col_side_ai_image_html = _build_ai_image_html(workout.workout_date.isoformat(), config)
+        poster_bytes = _fetch_ai_image_bytes(workout.workout_date.isoformat(), config)
         col_main = (
             f'<div class="hero-card">'
             f'<div class="eyebrow">Athlete View</div>'
@@ -972,7 +949,6 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'{stimulus_html}'
             f'{tips_html}'
             f'</div>'
-            + col_side_ai_image_html
         )
 
         col_side = (
@@ -997,6 +973,14 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>',
             unsafe_allow_html=True,
         )
+        if poster_bytes:
+            st.markdown(
+                '<div class="weather-section-label" style="margin-top:0.9rem;margin-bottom:0.4rem">'
+                '🏋️ Movement Visualisation'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            st.image(poster_bytes, width='stretch')
         return
 
     # ── GA4: garage_closed_view ───────────────────────────────────────────────
