@@ -108,28 +108,6 @@ CUSTOM_CSS = """
     }
     @media (max-width: 720px) {
         .page-grid { grid-template-columns: 1fr; }
-        .movement-row-main {
-            flex-direction: column;
-            align-items: flex-start;
-            justify-content: flex-start;
-            gap: 0.28rem;
-        }
-        .movement-row-left {
-            width: 100%;
-        }
-        .movement-badges {
-            width: 100%;
-            flex-wrap: wrap;
-            justify-content: flex-start;
-            gap: 0.3rem;
-        }
-        .rx-badge,
-        .scaled-badge {
-            max-width: 100%;
-            white-space: normal;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-        }
         .finisher-part-header,
         .wod-round-group-header {
             flex-wrap: wrap;
@@ -230,15 +208,16 @@ CUSTOM_CSS = """
     .movement-row:last-child { border-bottom: none; }
     .movement-row-main {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: flex-start;
+        gap: 0.28rem;
     }
     .movement-row-left {
         display: flex;
         align-items: baseline;
         gap: 0.45rem;
-        flex: 1;
+        width: 100%;
         min-width: 0;
     }
     .mvmt-reps {
@@ -253,8 +232,8 @@ CUSTOM_CSS = """
     }
     .movement-badges {
         display: flex;
-        gap: 0.35rem;
-        flex-shrink: 0;
+        flex-wrap: wrap;
+        gap: 0.3rem;
     }
     .mvmt-notes {
         color: #64748b;
@@ -344,7 +323,9 @@ CUSTOM_CSS = """
         color: #6ee7b7;
         font-size: 0.82rem;
         font-weight: 600;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     .scaled-badge {
         display: inline-block;
@@ -355,7 +336,9 @@ CUSTOM_CSS = """
         color: #fcd34d;
         font-size: 0.82rem;
         font-weight: 600;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     /* ---- Photo slideshow ---- */
     .photo-slideshow {
