@@ -25,7 +25,6 @@ If you want to inspect it:
 - Repo: https://github.com/vamsiyadavalli/TheAssembly
 - Athlete portal: https://asm-athlete.streamlit.app
 
-I'll keep sharing progress as I harden the platform path and release workflow.
 
 Question for the engineering crowd: where have you intentionally used "overkill" architecture because it improved delivery confidence or reliability?
 

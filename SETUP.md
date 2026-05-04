@@ -156,3 +156,26 @@ Common values for `APP_TIMEZONE`:
 **Admin console doesn't appear**
 - Confirm you set `ADMIN_PASSWORD` in the admin app's Streamlit secrets
 - Confirm you entered the password in the sidebar and clicked "Unlock admin"
+
+---
+
+## Optional: Generate Workout Images via Docker (No Local pip install)
+
+If you prefer not to install Python packages locally, run image generation in Docker using the app container dependencies.
+
+1. Ensure your local env file (for example `docker-compose.override.env`) includes:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+GEMINI_IMAGE_ASPECT_RATIO=16:9
+```
+
+2. Run generation from the repository root:
+
+```bash
+docker compose --env-file docker-compose.override.env run --rm app \
+	python tools/generate_workout_image.py --date 2026-05-01 --mode gemini --fallback prompt
+```
+
+The generated files are written to `../TheAssemblyData/photos/ai/` (or fallback prompt text when quota is exhausted).
