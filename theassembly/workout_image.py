@@ -45,6 +45,8 @@ _STYLE_DIRECTIVES = "\n".join([
     "* Clean grid layout with boxes/panels",
     "* Arrows between movement steps",
     "* Professional gym poster look (Nike/CrossFit branding style)",
+    "* Keep movement numbers fully inside each panel with safe left padding",
+    "* Preserve clear line spacing so numbers/text do not touch borders",
     "* 4K, ultra-detailed, sharp, cinematic lighting",
 ])
 
@@ -112,6 +114,62 @@ def _format_movement_block(movements: list, numbered: bool = True) -> str:
     return "\n".join(lines)
 
 
+def _normalize_inline_text(text: str) -> str:
+    """Collapse whitespace/newlines for single-line contract/footer fields."""
+    return " ".join(text.split())
+
+
+def _validate_poster_input(workout: "WorkoutRecord", wod_movements: list, finisher_movements: list) -> None:
+    """Fail fast if movement mapping would silently drop rows."""
+    ignored = [m for m in workout.movements if m not in wod_movements and m not in finisher_movements]
+    if ignored:
+        bad_sections = sorted({m.section.strip() for m in ignored if m.section.strip()})
+        raise ValueError(
+            "Unsupported movement sections for poster prompt: "
+            + ", ".join(bad_sections)
+        )
+
+
+def _build_semantic_contract_block(wod_movements: list, finisher_movements: list) -> str:
+    """Emit an explicit source-of-truth block the model must follow exactly."""
+    lines: list[str] = [
+        "Semantic Source Of Truth (must be followed exactly):",
+        "- Do NOT add, remove, merge, or reorder movement rows.",
+        "- Do NOT change reps, distances, durations, or movement names.",
+        "- Keep numbering sequential and only for listed WOD rows.",
+        f"WOD_COUNT: {len(wod_movements)}",
+        "WOD_ROWS:",
+    ]
+
+    for idx, m in enumerate(wod_movements, start=1):
+        reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+        name_part = _normalize_inline_text(m.name)
+        lines.append(f"{idx}|{reps_part}|{name_part}")
+
+    if finisher_movements:
+        part_nums = sorted({m.finisher_part for m in finisher_movements if m.finisher_part > 0})
+        if len(part_nums) >= 2:
+            lines.append(f"FINISHER_PARTS: {len(part_nums)}")
+            for part_num in part_nums:
+                part_mvmts = [m for m in finisher_movements if m.finisher_part == part_num]
+                first = part_mvmts[0]
+                part_title = first.finisher_part_title or first.finisher_part_type or f"Part {part_num}"
+                lines.append(f"FINISHER_PART_{part_num}_TITLE: {_normalize_inline_text(part_title)}")
+                lines.append(f"FINISHER_PART_{part_num}_COUNT: {len(part_mvmts)}")
+                for idx, m in enumerate(part_mvmts, start=1):
+                    reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+                    name_part = _normalize_inline_text(m.name)
+                    lines.append(f"FINISHER_PART_{part_num}_ROW_{idx}: {reps_part}|{name_part}")
+        else:
+            lines.append(f"FINISHER_COUNT: {len(finisher_movements)}")
+            for idx, m in enumerate(finisher_movements, start=1):
+                reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+                name_part = _normalize_inline_text(m.name)
+                lines.append(f"FINISHER_ROW_{idx}: {reps_part}|{name_part}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -129,6 +187,7 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     finisher_movements = [
         m for m in workout.movements if m.section.strip().lower() == "finisher"
     ]
+    _validate_poster_input(workout, wod_movements, finisher_movements)
     has_finisher = bool(finisher_movements)
 
     header = _derive_header(workout.workout_content, has_finisher)
@@ -138,6 +197,9 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
 
     # 1 — Style intro
     sections.append(_STYLE_INTRO)
+
+    # 1b — Semantic source-of-truth contract (must remain deterministic)
+    sections.append(_build_semantic_contract_block(wod_movements, finisher_movements))
 
     # 2 & 3 — Header / Sub-header
     sections.append(
@@ -204,10 +266,10 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     # 6 — Footer
     footer_parts: list[str] = []
     if workout.stimulus:
-        footer_parts.append(f'* Stimulus:\n    "{workout.stimulus}"')
+        footer_parts.append(f'* Stimulus: "{_normalize_inline_text(workout.stimulus)}"')
     if workout.technical_cues:
-        cues_text = " ".join(workout.technical_cues)
-        footer_parts.append(f'* Coach Tips:\n    "{cues_text}"')
+        cues_text = _normalize_inline_text(" ".join(workout.technical_cues))
+        footer_parts.append(f'* Coach Tips: "{cues_text}"')
     if footer_parts:
         sections.append("Footer Sections:\n\n" + "\n".join(footer_parts))
 
