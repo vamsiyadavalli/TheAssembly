@@ -208,16 +208,17 @@ CUSTOM_CSS = """
     .movement-row:last-child { border-bottom: none; }
     .movement-row-main {
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: flex-start;
-        gap: 0.28rem;
+        flex-direction: row;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.2rem 0.5rem;
     }
     .movement-row-left {
         display: flex;
         align-items: baseline;
         gap: 0.45rem;
-        width: 100%;
+        width: auto;
+        flex: 1 1 auto;
         min-width: 0;
     }
     .mvmt-reps {
@@ -969,8 +970,8 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
         poster_bytes = _fetch_ai_image_bytes(workout.workout_date.isoformat(), config)
         poster_link_html = (
-            '<div style="text-align:right;margin-top:0.6rem;font-size:0.78rem">'
-            '<a href="#wod-poster-anchor" style="color:#94a3b8;text-decoration:none">🖼 View Poster ↓</a>'
+            '<div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:0.45rem;font-size:0.78rem">'
+            '<a href="#wod-poster-anchor" data-scroll-target="wod-poster-anchor" style="color:#94a3b8;text-decoration:none;cursor:pointer">🖼 View Poster ↓</a>'
             '</div>'
         ) if poster_bytes else ""
         col_main = (
@@ -981,11 +982,11 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'<div style="color:#94a3b8;font-size:0.85rem;margin-top:0.2rem">{subtitle}</div>'
             f'</div>'
             f'<div class="panel-card workout-block">'
+            f'{poster_link_html}'
             f'{caption_html}'
             f'{format_workout_html(workout)}'
             f'{stimulus_html}'
             f'{tips_html}'
-            f'{poster_link_html}'
             f'</div>'
         )
 
@@ -1016,11 +1017,33 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
                 '<div id="wod-poster-anchor"></div>'
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:0.9rem;margin-bottom:0.4rem">'
                 '<div class="weather-section-label">🏋️ Movement Visualisation</div>'
-                '<a href="#wod-main-anchor" style="color:#94a3b8;font-size:0.78rem;text-decoration:none">↑ View Workout</a>'
+                '<a href="#wod-main-anchor" data-scroll-target="wod-main-anchor" style="color:#94a3b8;font-size:0.78rem;text-decoration:none;cursor:pointer">↑ View Workout</a>'
                 '</div>',
                 unsafe_allow_html=True,
             )
             st.image(poster_bytes, width='stretch')
+
+        st.components.v1.html(
+            """
+            <script>
+            (function () {
+                const doc = window.parent && window.parent.document;
+                if (!doc || doc.__taSmoothScrollBound) return;
+                doc.addEventListener('click', function (ev) {
+                    const anchor = ev.target && ev.target.closest && ev.target.closest('a[data-scroll-target]');
+                    if (!anchor) return;
+                    const targetId = anchor.getAttribute('data-scroll-target');
+                    const target = targetId ? doc.getElementById(targetId) : null;
+                    if (!target) return;
+                    ev.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, true);
+                doc.__taSmoothScrollBound = true;
+            })();
+            </script>
+            """,
+            height=0,
+        )
         return
 
     # ── GA4: garage_closed_view ───────────────────────────────────────────────

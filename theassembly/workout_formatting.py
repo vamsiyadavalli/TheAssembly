@@ -189,6 +189,28 @@ def _render_wod_block(mvmts: list["Movement"]) -> str:
     )
 
 
+_MOVEMENT_ABBREVIATIONS: tuple[tuple[str, str], ...] = (
+    ("alternating", "Alt"),
+    ("dumbbell", "DB"),
+    ("deadlift", "DL"),
+    ("double", "Dbl"),
+    ("single", "Sgl"),
+    ("strict", "Str"),
+    ("repetitions", "Reps"),
+    ("repetition", "Rep"),
+    ("calories", "Cals"),
+    ("seconds", "Sec"),
+)
+
+
+def _abbreviate_movement_text(text: str) -> str:
+    """Apply generic, word-safe abbreviations to movement text."""
+    out = text
+    for word, replacement in _MOVEMENT_ABBREVIATIONS:
+        out = _re.sub(rf"\b{_re.escape(word)}\b", replacement, out, flags=_re.IGNORECASE)
+    return out
+
+
 def _abbrev_weight_part(s: str) -> str:
     """Abbreviate a single gender's weight/equipment string."""
     s = _re.sub(r"\s*lbs\b", "#", s)
@@ -248,7 +270,8 @@ def _wod_round_group_header(label: str, note: str = "") -> str:
 
 def _movement_row(m: "Movement", *, in_round_group: bool = False) -> str:
     reps_html = f'<span class="mvmt-reps">{escape(m.reps)}</span>' if m.reps else ""
-    name_html = f'<span class="mvmt-name">{escape(m.name)}</span>'
+    display_name = _abbreviate_movement_text(m.name)
+    name_html = f'<span class="mvmt-name">{escape(display_name)}</span>'
     badges = ""
     if m.rx_weight:
         badges += _badge_html(m.rx_weight, "rx-badge")
@@ -273,6 +296,9 @@ def _movement_row(m: "Movement", *, in_round_group: bool = False) -> str:
             display_notes,
             flags=_re.IGNORECASE,
         ).strip(" ,;—–-")
+
+    if display_notes:
+        display_notes = _abbreviate_movement_text(display_notes)
 
     notes_html = f'<div class="mvmt-notes">{escape(display_notes)}</div>' if display_notes else ""
 
