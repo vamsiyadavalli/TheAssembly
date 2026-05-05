@@ -240,6 +240,13 @@ CUSTOM_CSS = """
         font-size: 0.85rem;
         margin-top: 0.15rem;
     }
+    .movement-wod-block {
+        padding: 0.75rem 0.9rem;
+        border-radius: 10px;
+        background: rgba(248, 250, 252, 0.025);
+        border: 1px solid rgba(248, 250, 252, 0.12);
+        margin-bottom: 0.5rem;
+    }
     .movement-finisher-block {
         margin-top: 1rem;
         padding: 0.75rem 0.9rem;
@@ -340,6 +347,9 @@ CUSTOM_CSS = """
         overflow-wrap: anywhere;
         word-break: break-word;
     }
+    .badge-men   { color: #7dd3fc; }
+    .badge-women { color: #fda4af; }
+    .badge-sep   { color: #64748b; }
     /* ---- Photo slideshow ---- */
     .photo-slideshow {
         position: relative;
@@ -958,7 +968,13 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
         col_side_photos_html, col_side_photos_css = _build_photos_html(photos)
         poster_bytes = _fetch_ai_image_bytes(workout.workout_date.isoformat(), config)
+        poster_link_html = (
+            '<div style="text-align:right;margin-top:0.6rem;font-size:0.78rem">'
+            '<a href="#wod-poster-anchor" style="color:#94a3b8;text-decoration:none">🖼 View Poster ↓</a>'
+            '</div>'
+        ) if poster_bytes else ""
         col_main = (
+            f'<div id="wod-main-anchor"></div>'
             f'<div class="hero-card">'
             f'<div class="eyebrow">Athlete View</div>'
             f'<div class="hero-title">{slate.heading}</div>'
@@ -969,6 +985,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'{format_workout_html(workout)}'
             f'{stimulus_html}'
             f'{tips_html}'
+            f'{poster_link_html}'
             f'</div>'
         )
 
@@ -996,8 +1013,10 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         )
         if poster_bytes:
             st.markdown(
-                '<div class="weather-section-label" style="margin-top:0.9rem;margin-bottom:0.4rem">'
-                '🏋️ Movement Visualisation'
+                '<div id="wod-poster-anchor"></div>'
+                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:0.9rem;margin-bottom:0.4rem">'
+                '<div class="weather-section-label">🏋️ Movement Visualisation</div>'
+                '<a href="#wod-main-anchor" style="color:#94a3b8;font-size:0.78rem;text-decoration:none">↑ View Workout</a>'
                 '</div>',
                 unsafe_allow_html=True,
             )
