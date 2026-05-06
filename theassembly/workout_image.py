@@ -18,12 +18,15 @@ Gemini image generation:
 """
 from __future__ import annotations
 
+import io
+import random
 import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from theassembly.models import WorkoutRecord
 
 # ---------------------------------------------------------------------------
@@ -302,6 +305,65 @@ class GeminiAPIError(Exception):
         super().__init__(info.message)
 
 
+def _parse_aspect_ratio(aspect_ratio: str) -> tuple[int, int] | None:
+    """Parse aspect ratio strings like "16:9" into integer tuples."""
+    parts = aspect_ratio.split(":", maxsplit=1)
+    if len(parts) != 2:
+        return None
+    try:
+        left = int(parts[0].strip())
+        right = int(parts[1].strip())
+    except ValueError:
+        return None
+    if left <= 0 or right <= 0:
+        return None
+    return left, right
+
+
+def _validate_generated_image_bytes(
+    image_data: bytes,
+    *,
+    aspect_ratio: str,
+    min_width: int = 512,
+    min_height: int = 512,
+    ratio_tolerance: float = 0.06,
+) -> dict[str, int]:
+    """Validate image bytes and return basic dimensions for downstream metadata."""
+    if not image_data:
+        raise GeminiImageError("Gemini returned empty image bytes.")
+
+    if not image_data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise GeminiImageError("Gemini returned non-PNG image payload.")
+
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError("Pillow is required for Gemini image validation.") from exc
+
+    try:
+        with Image.open(io.BytesIO(image_data)) as img:
+            img.load()
+            width, height = img.size
+    except Exception as exc:
+        raise GeminiImageError(f"Gemini returned unreadable PNG bytes: {exc}") from exc
+
+    if width < min_width or height < min_height:
+        raise GeminiImageError(
+            f"Gemini image too small ({width}x{height}); expected at least {min_width}x{min_height}."
+        )
+
+    parsed_ratio = _parse_aspect_ratio(aspect_ratio)
+    if parsed_ratio is not None:
+        expected_ratio = parsed_ratio[0] / parsed_ratio[1]
+        actual_ratio = width / height
+        if abs(actual_ratio - expected_ratio) > ratio_tolerance:
+            raise GeminiImageError(
+                f"Gemini image aspect ratio mismatch ({width}x{height}); expected {aspect_ratio}."
+            )
+
+    return {"image_bytes": len(image_data), "image_width": width, "image_height": height}
+
+
 def _extract_retry_after_seconds(raw_message: str) -> float | None:
     """Extract retry delay seconds from Gemini error text when present."""
     retry_delay_match = re.search(r"retryDelay'?:\s*'?(\d+(?:\.\d+)?)s", raw_message)
@@ -340,7 +402,9 @@ def generate_gemini_image(
     model: str = "gemini-2.5-flash-image",
     aspect_ratio: str = "16:9",
     max_retries: int = 2,
-) -> None:
+    max_retry_delay_seconds: float = 300.0,
+    retry_jitter_ratio: float = 0.1,
+) -> dict[str, int]:
     """Call Gemini Developer API to generate a workout image and save it as PNG.
 
     Args:
@@ -366,6 +430,10 @@ def generate_gemini_image(
 
     client = genai.Client(api_key=api_key)
 
+    parsed_ratio = _parse_aspect_ratio(aspect_ratio)
+    if parsed_ratio is None:
+        raise GeminiImageError(f"Invalid aspect ratio format: {aspect_ratio}")
+
     response = None
     for attempt in range(max_retries + 1):
         try:
@@ -381,27 +449,47 @@ def generate_gemini_image(
         except Exception as exc:
             info = _classify_gemini_error(exc)
 
-            # Quota exhaustion on free tier is usually non-recoverable in the same run.
-            if info.category == "quota_exhausted":
-                raise GeminiAPIError(info) from exc
+            is_retryable = False
+            if info.category == "rate_limited":
+                is_retryable = True
+            elif info.category == "quota_exhausted" and info.retry_after_seconds is not None:
+                is_retryable = True
 
-            is_retryable = info.category == "rate_limited"
             has_attempts_left = attempt < max_retries
             if not (is_retryable and has_attempts_left):
                 raise GeminiAPIError(info) from exc
 
-            sleep_seconds = info.retry_after_seconds if info.retry_after_seconds is not None else min(2 ** attempt, 8)
-            time.sleep(min(sleep_seconds, 15))
+            base_delay = info.retry_after_seconds if info.retry_after_seconds is not None else min(2 ** attempt, 8)
+            bounded_delay = min(base_delay, max_retry_delay_seconds)
+
+            jitter = 1.0
+            if retry_jitter_ratio > 0:
+                jitter_low = max(0.0, 1.0 - retry_jitter_ratio)
+                jitter_high = 1.0 + retry_jitter_ratio
+                jitter = random.uniform(jitter_low, jitter_high)
+
+            sleep_seconds = min(bounded_delay * jitter, max_retry_delay_seconds)
+            time.sleep(max(0.0, sleep_seconds))
 
     if response is None:
         raise GeminiAPIError(
             GeminiErrorInfo("unknown", None, "Gemini API call failed without a response")
         )
 
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        raise GeminiImageError("Gemini returned no candidates in the response.")
+
     image_data: bytes | None = None
-    for part in response.candidates[0].content.parts:
-        if part.inline_data is not None:
-            image_data = part.inline_data.data
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        parts = getattr(content, "parts", []) if content is not None else []
+        for part in parts:
+            inline_data = getattr(part, "inline_data", None)
+            if inline_data is not None and getattr(inline_data, "data", None):
+                image_data = inline_data.data
+                break
+        if image_data is not None:
             break
 
     if image_data is None:
@@ -409,6 +497,9 @@ def generate_gemini_image(
             f"Gemini returned no image part for prompt starting: {prompt[:120]!r}"
         )
 
+    image_metrics = _validate_generated_image_bytes(image_data, aspect_ratio=aspect_ratio)
+
     dest = _Path(output_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(image_data)
+    return image_metrics

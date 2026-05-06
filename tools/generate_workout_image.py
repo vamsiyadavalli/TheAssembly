@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import tomllib
 from datetime import date, datetime, timedelta, timezone
@@ -47,6 +48,55 @@ from theassembly.models import load_workouts            # noqa: E402
 
 _DEFAULT_OUTPUT_DIR = str(_DATA_ROOT / "photos" / "ai")
 _TIMEZONE = "America/New_York"
+
+
+def _validate_api_key_format(api_key: str) -> None:
+    """Perform a lightweight API key sanity check before network requests."""
+    candidate = api_key.strip()
+    if not candidate or len(candidate) < 20 or any(ch.isspace() for ch in candidate):
+        raise RuntimeError(
+            "[auth_failed] GEMINI_API_KEY format appears invalid. "
+            "Check GEMINI_API_KEY/GOOGLE_API_KEY in env or .streamlit/secrets.toml."
+        )
+
+
+def _validate_prompt_preflight(prompt: str) -> None:
+    """Validate prompt structure before Gemini calls to avoid low-signal generations."""
+    max_chars_raw = _setting_from_env_or_secrets("GEMINI_MAX_PROMPT_CHARS", default="150000") or "150000"
+    try:
+        max_chars = int(max_chars_raw)
+    except ValueError:
+        max_chars = 150000
+
+    if len(prompt) > max_chars:
+        raise RuntimeError(
+            f"[quality_failed] Prompt too long ({len(prompt)} chars). Max allowed: {max_chars}."
+        )
+
+    required_sections = (
+        "Semantic Source Of Truth",
+        "Header (large, bold):",
+        "Workout Sections (left/middle panels with images):",
+        "Design Style:",
+        "WOD_ROWS:",
+    )
+    missing_sections = [section for section in required_sections if section not in prompt]
+    if missing_sections:
+        raise RuntimeError(
+            "[quality_failed] Missing required prompt section(s): "
+            + ", ".join(missing_sections)
+        )
+
+    wod_count_match = re.search(r"WOD_COUNT:\s*(\d+)", prompt)
+    if wod_count_match is None:
+        raise RuntimeError("[quality_failed] Prompt contract missing WOD_COUNT.")
+
+    if int(wod_count_match.group(1)) <= 0:
+        raise RuntimeError("[quality_failed] Prompt has no workout rows (WOD_COUNT=0).")
+
+    wod_rows = re.findall(r"^\d+\|[^|]*\|.+$", prompt, flags=re.MULTILINE)
+    if not wod_rows:
+        raise RuntimeError("[quality_failed] Prompt contract has no valid WOD row entries.")
 
 
 def _load_streamlit_secrets() -> dict[str, object]:
@@ -169,7 +219,7 @@ def _run_prompt_mode(workout, output_path: Path, prompt: str | None = None) -> s
     return prompt
 
 
-def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str]:
+def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str, dict[str, int]]:
     """Generate an AI workout image via Gemini Developer API and save as PNG.
 
     Raises:
@@ -189,6 +239,7 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
             "GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. "
             "Set it in shell env or .streamlit/secrets.toml before running gemini mode."
         )
+    _validate_api_key_format(api_key)
 
     model = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_MODEL",
@@ -198,29 +249,55 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
         "GEMINI_IMAGE_ASPECT_RATIO",
         default="16:9",
     ) or "16:9"
+    max_retries_raw = _setting_from_env_or_secrets("GEMINI_MAX_RETRIES", default="5") or "5"
+    max_retry_delay_raw = _setting_from_env_or_secrets(
+        "GEMINI_MAX_RETRY_DELAY_SECONDS",
+        default="300",
+    ) or "300"
+    retry_jitter_raw = _setting_from_env_or_secrets("GEMINI_RETRY_JITTER_RATIO", default="0.1") or "0.1"
+
+    try:
+        max_retries = max(0, int(max_retries_raw))
+    except ValueError:
+        max_retries = 5
+
+    try:
+        max_retry_delay_seconds = max(1.0, float(max_retry_delay_raw))
+    except ValueError:
+        max_retry_delay_seconds = 300.0
+
+    try:
+        retry_jitter_ratio = max(0.0, min(float(retry_jitter_raw), 0.5))
+    except ValueError:
+        retry_jitter_ratio = 0.1
 
     prompt = prompt if prompt is not None else build_image_prompt(workout)
+    _validate_prompt_preflight(prompt)
     print(f"[info] Prompt chars  : {len(prompt)}")
     print(f"[info] Model         : {model}")
     print(f"[info] Aspect ratio  : {aspect_ratio}")
+    print(f"[info] Max retries   : {max_retries}")
     print("[info] Calling Gemini API...")
 
     try:
-        generate_gemini_image(
+        image_metrics = generate_gemini_image(
             prompt=prompt,
             output_path=output_path,
             api_key=api_key,
             model=model,
             aspect_ratio=aspect_ratio,
+            max_retries=max_retries,
+            max_retry_delay_seconds=max_retry_delay_seconds,
+            retry_jitter_ratio=retry_jitter_ratio,
         )
     except GeminiAPIError as exc:
         raise RuntimeError(f"[{exc.info.category}] {exc.info.message}") from exc
     except GeminiImageError as exc:
-        raise RuntimeError(f"Gemini returned no image: {exc}") from exc
+        raise RuntimeError(f"[quality_failed] {exc}") from exc
     except Exception as exc:
         raise RuntimeError(f"Gemini API call failed: {exc}") from exc
 
-    return prompt, model, aspect_ratio
+    return prompt, model, aspect_ratio, image_metrics
 
 
 def _iter_date_range(start_iso: str, end_iso: str):
@@ -286,6 +363,12 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "prompt_sha256": None,
         "model": None,
         "aspect_ratio": None,
+        "prompt_length": None,
+        "image_bytes": None,
+        "image_width": None,
+        "image_height": None,
+        "validation_passed": None,
+        "validation_error": None,
         "error_category": None,
         "error_message": None,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -324,20 +407,27 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
             "status": "success",
             "outcome": outcome,
             "effective_mode": "prompt",
+            "prompt_length": len(prompt),
             "prompt_sha256": _prompt_sha256(prompt),
+            "validation_passed": True,
         })
     elif args.mode == "gemini":
         prompt_for_run: str | None = None
         try:
-            prompt_for_run, model, aspect_ratio = _run_gemini_mode(workout, output_path)
+            prompt_for_run, model, aspect_ratio, image_metrics = _run_gemini_mode(workout, output_path)
             outcome = "gemini"
             metadata.update({
                 "status": "success",
                 "outcome": outcome,
                 "effective_mode": "gemini",
+                "prompt_length": len(prompt_for_run),
                 "prompt_sha256": _prompt_sha256(prompt_for_run),
                 "model": model,
                 "aspect_ratio": aspect_ratio,
+                "image_bytes": image_metrics.get("image_bytes"),
+                "image_width": image_metrics.get("image_width"),
+                "image_height": image_metrics.get("image_height"),
+                "validation_passed": True,
             })
         except RuntimeError as exc:
             error_text = str(exc)
@@ -347,6 +437,8 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "status": "error",
                 "outcome": f"failed-{category}",
                 "effective_mode": "gemini",
+                "validation_passed": False if category == "quality_failed" else None,
+                "validation_error": error_text if category == "quality_failed" else None,
                 "error_category": category,
                 "error_message": error_text,
             })
@@ -357,6 +449,8 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                     "https://ai.google.dev/gemini-api/docs/rate-limits",
                     file=sys.stderr,
                 )
+
+            if category in {"quota_exhausted", "quality_failed"}:
                 fallback_ok, fallback_outcome, fallback_prompt = _run_fallback(
                     workout,
                     output_path,
@@ -367,12 +461,15 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                     print(f"[done] Saved via fallback ({args.fallback})")
                     metadata.update({
                         "status": "success",
-                        "outcome": fallback_outcome,
+                        "outcome": f"{fallback_outcome}-{category}",
                         "effective_mode": args.fallback,
+                        "prompt_length": len(fallback_prompt) if fallback_prompt is not None else None,
                         "prompt_sha256": _prompt_sha256(fallback_prompt),
+                        "validation_passed": False if category == "quality_failed" else None,
+                        "validation_error": error_text if category == "quality_failed" else None,
                     })
                     _write_metadata(meta_path, metadata)
-                    return 0, fallback_outcome
+                    return 0, f"{fallback_outcome}-{category}"
 
             _write_metadata(meta_path, metadata)
             return 3, f"failed-{category}"
