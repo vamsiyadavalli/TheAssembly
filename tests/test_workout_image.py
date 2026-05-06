@@ -112,6 +112,9 @@ class PromptWithFinisherTests(unittest.TestCase):
     def test_stimulus_in_footer(self) -> None:
         self.assertIn("Hypertrophy + Aerobic Benchmark", self.prompt)
 
+    def test_stimulus_rendered_inline_after_label(self) -> None:
+        self.assertIn('* Stimulus: "Hypertrophy + Aerobic Benchmark"', self.prompt)
+
     def test_coach_tips_in_footer(self) -> None:
         self.assertIn("Control the descent on the floor press", self.prompt)
 
@@ -357,6 +360,55 @@ class WodRoundGroupPromptTests(unittest.TestCase):
     def test_prompt_is_deterministic(self) -> None:
         workout = self._grouped_workout()
         self.assertEqual(build_image_prompt(workout), build_image_prompt(workout))
+
+
+class SemanticContractPromptTests(unittest.TestCase):
+    def test_repeated_wod_sequence_is_preserved_without_phantom_rows(self) -> None:
+        workout = _make_workout(
+            content="3 Rounds",
+            movements=[
+                {"name": "Alternating Farmer Step Up", "reps": "30", "round_group": 1, "round_group_label": "3 Rounds"},
+                {"name": "Run", "reps": "400m", "round_group": 1, "round_group_label": "3 Rounds"},
+                {"name": "Alternating Farmer Step Up", "reps": "30", "round_group": 1, "round_group_label": "3 Rounds"},
+            ],
+        )
+        prompt = build_image_prompt(workout)
+        self.assertIn("WOD_COUNT: 3", prompt)
+        self.assertIn("1|30|Alternating Farmer Step Up", prompt)
+        self.assertIn("2|400m|Run", prompt)
+        self.assertIn("3|30|Alternating Farmer Step Up", prompt)
+        self.assertNotIn("4|", prompt)
+
+    def test_finisher_reps_mapping_stays_exact(self) -> None:
+        workout = _make_workout(
+            movements=[
+                {"name": "Push Ups", "reps": "10"},
+                {"name": "Pull Ups", "reps": "4", "section": "Finisher", "finisher_part": 2, "finisher_part_title": "12:00 EMOM"},
+                {"name": "Push Ups", "reps": "6", "section": "Finisher", "finisher_part": 2, "finisher_part_title": "12:00 EMOM"},
+                {"name": "Air Squats", "reps": "8", "section": "Finisher", "finisher_part": 2, "finisher_part_title": "12:00 EMOM"},
+            ]
+        )
+        prompt = build_image_prompt(workout)
+        self.assertIn("FINISHER_COUNT: 3", prompt)
+        self.assertIn("FINISHER_ROW_1: 4|Pull Ups", prompt)
+        self.assertIn("FINISHER_ROW_2: 6|Push Ups", prompt)
+        self.assertIn("FINISHER_ROW_3: 8|Air Squats", prompt)
+
+    def test_superman_name_not_forced_to_arm_lifts(self) -> None:
+        workout = _make_workout(
+            movements=[
+                {"name": "Run", "reps": "200m"},
+                {"name": "Superman", "reps": "20s", "section": "Finisher"},
+            ]
+        )
+        prompt = build_image_prompt(workout)
+        self.assertIn("FINISHER_ROW_1: 20s|Superman", prompt)
+        self.assertNotIn("Superman Arm-Lifts", prompt)
+
+    def test_semantic_contract_contains_strict_no_invention_clause(self) -> None:
+        workout = _make_workout(movements=[{"name": "Run", "reps": "400m"}])
+        prompt = build_image_prompt(workout)
+        self.assertIn("Do NOT add, remove, merge, or reorder movement rows", prompt)
 
 
 if __name__ == "__main__":

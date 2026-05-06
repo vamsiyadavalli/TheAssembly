@@ -18,12 +18,15 @@ Gemini image generation:
 """
 from __future__ import annotations
 
+import io
+import random
 import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from theassembly.models import WorkoutRecord
 
 # ---------------------------------------------------------------------------
@@ -45,6 +48,8 @@ _STYLE_DIRECTIVES = "\n".join([
     "* Clean grid layout with boxes/panels",
     "* Arrows between movement steps",
     "* Professional gym poster look (Nike/CrossFit branding style)",
+    "* Keep movement numbers fully inside each panel with safe left padding",
+    "* Preserve clear line spacing so numbers/text do not touch borders",
     "* 4K, ultra-detailed, sharp, cinematic lighting",
 ])
 
@@ -112,6 +117,62 @@ def _format_movement_block(movements: list, numbered: bool = True) -> str:
     return "\n".join(lines)
 
 
+def _normalize_inline_text(text: str) -> str:
+    """Collapse whitespace/newlines for single-line contract/footer fields."""
+    return " ".join(text.split())
+
+
+def _validate_poster_input(workout: "WorkoutRecord", wod_movements: list, finisher_movements: list) -> None:
+    """Fail fast if movement mapping would silently drop rows."""
+    ignored = [m for m in workout.movements if m not in wod_movements and m not in finisher_movements]
+    if ignored:
+        bad_sections = sorted({m.section.strip() for m in ignored if m.section.strip()})
+        raise ValueError(
+            "Unsupported movement sections for poster prompt: "
+            + ", ".join(bad_sections)
+        )
+
+
+def _build_semantic_contract_block(wod_movements: list, finisher_movements: list) -> str:
+    """Emit an explicit source-of-truth block the model must follow exactly."""
+    lines: list[str] = [
+        "Semantic Source Of Truth (must be followed exactly):",
+        "- Do NOT add, remove, merge, or reorder movement rows.",
+        "- Do NOT change reps, distances, durations, or movement names.",
+        "- Keep numbering sequential and only for listed WOD rows.",
+        f"WOD_COUNT: {len(wod_movements)}",
+        "WOD_ROWS:",
+    ]
+
+    for idx, m in enumerate(wod_movements, start=1):
+        reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+        name_part = _normalize_inline_text(m.name)
+        lines.append(f"{idx}|{reps_part}|{name_part}")
+
+    if finisher_movements:
+        part_nums = sorted({m.finisher_part for m in finisher_movements if m.finisher_part > 0})
+        if len(part_nums) >= 2:
+            lines.append(f"FINISHER_PARTS: {len(part_nums)}")
+            for part_num in part_nums:
+                part_mvmts = [m for m in finisher_movements if m.finisher_part == part_num]
+                first = part_mvmts[0]
+                part_title = first.finisher_part_title or first.finisher_part_type or f"Part {part_num}"
+                lines.append(f"FINISHER_PART_{part_num}_TITLE: {_normalize_inline_text(part_title)}")
+                lines.append(f"FINISHER_PART_{part_num}_COUNT: {len(part_mvmts)}")
+                for idx, m in enumerate(part_mvmts, start=1):
+                    reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+                    name_part = _normalize_inline_text(m.name)
+                    lines.append(f"FINISHER_PART_{part_num}_ROW_{idx}: {reps_part}|{name_part}")
+        else:
+            lines.append(f"FINISHER_COUNT: {len(finisher_movements)}")
+            for idx, m in enumerate(finisher_movements, start=1):
+                reps_part = _normalize_inline_text(m.reps) if m.reps else ""
+                name_part = _normalize_inline_text(m.name)
+                lines.append(f"FINISHER_ROW_{idx}: {reps_part}|{name_part}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -129,6 +190,7 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     finisher_movements = [
         m for m in workout.movements if m.section.strip().lower() == "finisher"
     ]
+    _validate_poster_input(workout, wod_movements, finisher_movements)
     has_finisher = bool(finisher_movements)
 
     header = _derive_header(workout.workout_content, has_finisher)
@@ -138,6 +200,9 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
 
     # 1 — Style intro
     sections.append(_STYLE_INTRO)
+
+    # 1b — Semantic source-of-truth contract (must remain deterministic)
+    sections.append(_build_semantic_contract_block(wod_movements, finisher_movements))
 
     # 2 & 3 — Header / Sub-header
     sections.append(
@@ -204,10 +269,10 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     # 6 — Footer
     footer_parts: list[str] = []
     if workout.stimulus:
-        footer_parts.append(f'* Stimulus:\n    "{workout.stimulus}"')
+        footer_parts.append(f'* Stimulus: "{_normalize_inline_text(workout.stimulus)}"')
     if workout.technical_cues:
-        cues_text = " ".join(workout.technical_cues)
-        footer_parts.append(f'* Coach Tips:\n    "{cues_text}"')
+        cues_text = _normalize_inline_text(" ".join(workout.technical_cues))
+        footer_parts.append(f'* Coach Tips: "{cues_text}"')
     if footer_parts:
         sections.append("Footer Sections:\n\n" + "\n".join(footer_parts))
 
@@ -238,6 +303,65 @@ class GeminiAPIError(Exception):
     def __init__(self, info: GeminiErrorInfo) -> None:
         self.info = info
         super().__init__(info.message)
+
+
+def _parse_aspect_ratio(aspect_ratio: str) -> tuple[int, int] | None:
+    """Parse aspect ratio strings like "16:9" into integer tuples."""
+    parts = aspect_ratio.split(":", maxsplit=1)
+    if len(parts) != 2:
+        return None
+    try:
+        left = int(parts[0].strip())
+        right = int(parts[1].strip())
+    except ValueError:
+        return None
+    if left <= 0 or right <= 0:
+        return None
+    return left, right
+
+
+def _validate_generated_image_bytes(
+    image_data: bytes,
+    *,
+    aspect_ratio: str,
+    min_width: int = 512,
+    min_height: int = 512,
+    ratio_tolerance: float = 0.06,
+) -> dict[str, int]:
+    """Validate image bytes and return basic dimensions for downstream metadata."""
+    if not image_data:
+        raise GeminiImageError("Gemini returned empty image bytes.")
+
+    if not image_data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise GeminiImageError("Gemini returned non-PNG image payload.")
+
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError("Pillow is required for Gemini image validation.") from exc
+
+    try:
+        with Image.open(io.BytesIO(image_data)) as img:
+            img.load()
+            width, height = img.size
+    except Exception as exc:
+        raise GeminiImageError(f"Gemini returned unreadable PNG bytes: {exc}") from exc
+
+    if width < min_width or height < min_height:
+        raise GeminiImageError(
+            f"Gemini image too small ({width}x{height}); expected at least {min_width}x{min_height}."
+        )
+
+    parsed_ratio = _parse_aspect_ratio(aspect_ratio)
+    if parsed_ratio is not None:
+        expected_ratio = parsed_ratio[0] / parsed_ratio[1]
+        actual_ratio = width / height
+        if abs(actual_ratio - expected_ratio) > ratio_tolerance:
+            raise GeminiImageError(
+                f"Gemini image aspect ratio mismatch ({width}x{height}); expected {aspect_ratio}."
+            )
+
+    return {"image_bytes": len(image_data), "image_width": width, "image_height": height}
 
 
 def _extract_retry_after_seconds(raw_message: str) -> float | None:
@@ -278,7 +402,9 @@ def generate_gemini_image(
     model: str = "gemini-2.5-flash-image",
     aspect_ratio: str = "16:9",
     max_retries: int = 2,
-) -> None:
+    max_retry_delay_seconds: float = 300.0,
+    retry_jitter_ratio: float = 0.1,
+) -> dict[str, int]:
     """Call Gemini Developer API to generate a workout image and save it as PNG.
 
     Args:
@@ -304,6 +430,10 @@ def generate_gemini_image(
 
     client = genai.Client(api_key=api_key)
 
+    parsed_ratio = _parse_aspect_ratio(aspect_ratio)
+    if parsed_ratio is None:
+        raise GeminiImageError(f"Invalid aspect ratio format: {aspect_ratio}")
+
     response = None
     for attempt in range(max_retries + 1):
         try:
@@ -319,27 +449,47 @@ def generate_gemini_image(
         except Exception as exc:
             info = _classify_gemini_error(exc)
 
-            # Quota exhaustion on free tier is usually non-recoverable in the same run.
-            if info.category == "quota_exhausted":
-                raise GeminiAPIError(info) from exc
+            is_retryable = False
+            if info.category == "rate_limited":
+                is_retryable = True
+            elif info.category == "quota_exhausted" and info.retry_after_seconds is not None:
+                is_retryable = True
 
-            is_retryable = info.category == "rate_limited"
             has_attempts_left = attempt < max_retries
             if not (is_retryable and has_attempts_left):
                 raise GeminiAPIError(info) from exc
 
-            sleep_seconds = info.retry_after_seconds if info.retry_after_seconds is not None else min(2 ** attempt, 8)
-            time.sleep(min(sleep_seconds, 15))
+            base_delay = info.retry_after_seconds if info.retry_after_seconds is not None else min(2 ** attempt, 8)
+            bounded_delay = min(base_delay, max_retry_delay_seconds)
+
+            jitter = 1.0
+            if retry_jitter_ratio > 0:
+                jitter_low = max(0.0, 1.0 - retry_jitter_ratio)
+                jitter_high = 1.0 + retry_jitter_ratio
+                jitter = random.uniform(jitter_low, jitter_high)
+
+            sleep_seconds = min(bounded_delay * jitter, max_retry_delay_seconds)
+            time.sleep(max(0.0, sleep_seconds))
 
     if response is None:
         raise GeminiAPIError(
             GeminiErrorInfo("unknown", None, "Gemini API call failed without a response")
         )
 
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        raise GeminiImageError("Gemini returned no candidates in the response.")
+
     image_data: bytes | None = None
-    for part in response.candidates[0].content.parts:
-        if part.inline_data is not None:
-            image_data = part.inline_data.data
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        parts = getattr(content, "parts", []) if content is not None else []
+        for part in parts:
+            inline_data = getattr(part, "inline_data", None)
+            if inline_data is not None and getattr(inline_data, "data", None):
+                image_data = inline_data.data
+                break
+        if image_data is not None:
             break
 
     if image_data is None:
@@ -347,6 +497,9 @@ def generate_gemini_image(
             f"Gemini returned no image part for prompt starting: {prompt[:120]!r}"
         )
 
+    image_metrics = _validate_generated_image_bytes(image_data, aspect_ratio=aspect_ratio)
+
     dest = _Path(output_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(image_data)
+    return image_metrics
