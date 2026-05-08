@@ -273,6 +273,13 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     prompt = prompt if prompt is not None else build_image_prompt(workout)
     _validate_prompt_preflight(prompt)
+
+    # Save the prompt alongside the PNG so the generation input is always retrievable.
+    prompt_path = output_path.with_suffix(".prompt.txt")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    print(f"[info] Prompt saved  : {prompt_path}")
+
     print(f"[info] Prompt chars  : {len(prompt)}")
     print(f"[info] Model         : {model}")
     print(f"[info] Aspect ratio  : {aspect_ratio}")
@@ -360,6 +367,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "outcome": "unknown",
         "effective_mode": None,
         "output_path": str(output_path),
+        "prompt_path": None,
         "prompt_sha256": None,
         "model": None,
         "aspect_ratio": None,
@@ -420,6 +428,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "status": "success",
                 "outcome": outcome,
                 "effective_mode": "gemini",
+                "prompt_path": str(output_path.with_suffix(".prompt.txt")),
                 "prompt_length": len(prompt_for_run),
                 "prompt_sha256": _prompt_sha256(prompt_for_run),
                 "model": model,
