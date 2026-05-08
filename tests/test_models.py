@@ -132,6 +132,10 @@ class MovementModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Movement.from_dict({"reps": "10", "rx_weight": "45 lbs"})
 
+    def test_movement_from_dict_requires_reps(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({"name": "DB Snatches"})
+
     def test_movement_to_dict_omits_empty_fields(self) -> None:
         m = Movement.from_dict({"name": "200m Run", "reps": "1"})
         d = m.to_dict()
@@ -356,9 +360,30 @@ class FinisherPartModelTests(unittest.TestCase):
         m = Movement.from_dict({"name": "Pushups", "reps": "10", "section": "Finisher", "finisher_part": "2"})
         self.assertEqual(2, m.finisher_part)
 
-    def test_finisher_part_invalid_value_falls_back_to_zero(self) -> None:
-        m = Movement.from_dict({"name": "Pushups", "reps": "10", "finisher_part": "bad"})
-        self.assertEqual(0, m.finisher_part)
+    def test_finisher_part_invalid_value_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({"name": "Pushups", "reps": "10", "finisher_part": "bad"})
+
+    def test_finisher_metadata_requires_finisher_section(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({"name": "Pushups", "reps": "10", "finisher_part": 1})
+
+    def test_round_group_cannot_be_set_on_finisher_section(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({
+                "name": "Pushups",
+                "reps": "10",
+                "section": "Finisher",
+                "round_group": 1,
+            })
+
+    def test_round_group_note_requires_round_group(self) -> None:
+        with self.assertRaises(ValueError):
+            Movement.from_dict({
+                "name": "Pushups",
+                "reps": "10",
+                "round_group_note": "Rest 2:00",
+            })
 
 
 if __name__ == "__main__":
