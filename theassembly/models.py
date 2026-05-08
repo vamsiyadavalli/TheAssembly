@@ -42,35 +42,65 @@ class Movement:
     round_group_label: str = ""
     round_group_note: str = ""
 
+    @staticmethod
+    def _parse_optional_positive_int(raw: Any, field_name: str) -> int:
+        if raw is None or str(raw).strip() == "":
+            return 0
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be a positive integer when provided.") from exc
+        if value < 1:
+            raise ValueError(f"{field_name} must be >= 1 when provided.")
+        return value
+
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Movement":
         normalized = {_normalize_key(k): v for k, v in payload.items()}
         name = str(normalized.get("name", "")).strip()
         if not name:
             raise ValueError("Movement entry is missing required field: name")
-        raw_part = normalized.get("finisher_part", 0)
-        try:
-            part = int(raw_part)
-        except (TypeError, ValueError):
-            part = 0
-        raw_rg = normalized.get("round_group", 0)
-        try:
-            rg = int(raw_rg)
-        except (TypeError, ValueError):
-            rg = 0
+        reps = str(normalized.get("reps", "")).strip()
+        if not reps:
+            raise ValueError("Movement entry is missing required field: reps")
+
+        section = str(normalized.get("section", "")).strip()
+        if section:
+            if section.lower() != "finisher":
+                raise ValueError("section must be 'Finisher' when provided.")
+            section = "Finisher"
+
+        part = cls._parse_optional_positive_int(normalized.get("finisher_part"), "finisher_part")
+        rg = cls._parse_optional_positive_int(normalized.get("round_group"), "round_group")
+
+        part_type = str(normalized.get("finisher_part_type", "")).strip()
+        part_title = str(normalized.get("finisher_part_title", "")).strip()
+        rg_label = str(normalized.get("round_group_label", "")).strip()
+        rg_note = str(normalized.get("round_group_note", "")).strip()
+
+        has_finisher_metadata = bool(part or part_type or part_title)
+        if has_finisher_metadata and section != "Finisher":
+            raise ValueError("finisher metadata requires section='Finisher'.")
+
+        if section == "Finisher" and rg:
+            raise ValueError("round_group cannot be set on Finisher movements.")
+
+        if (rg_label or rg_note) and not rg:
+            raise ValueError("round_group_label/round_group_note requires round_group.")
+
         return cls(
             name=name,
-            reps=str(normalized.get("reps", "")).strip(),
+            reps=reps,
             rx_weight=str(normalized.get("rx_weight", "")).strip(),
             scaled_weight=str(normalized.get("scaled_weight", "")).strip(),
             notes=str(normalized.get("notes", "")).strip(),
-            section=str(normalized.get("section", "")).strip(),
+            section=section,
             finisher_part=part,
-            finisher_part_type=str(normalized.get("finisher_part_type", "")).strip(),
-            finisher_part_title=str(normalized.get("finisher_part_title", "")).strip(),
+            finisher_part_type=part_type,
+            finisher_part_title=part_title,
             round_group=rg,
-            round_group_label=str(normalized.get("round_group_label", "")).strip(),
-            round_group_note=str(normalized.get("round_group_note", "")).strip(),
+            round_group_label=rg_label,
+            round_group_note=rg_note,
         )
 
     def to_dict(self) -> dict[str, str]:
