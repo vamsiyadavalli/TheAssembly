@@ -3,7 +3,7 @@ import unittest
 
 from theassembly.models import WorkoutRecord
 from theassembly.workout_image import (
-    _FINISHER_HEADER,
+    _DEFAULT_HEADER,
     _derive_header,
     build_image_prompt,
 )
@@ -30,44 +30,43 @@ def _make_workout(**overrides) -> WorkoutRecord:
 # ---------------------------------------------------------------------------
 
 class DeriveHeaderTests(unittest.TestCase):
-    def test_finisher_header_when_has_finisher(self) -> None:
-        result = _derive_header("Strength (No Clock)", has_finisher=True)
-        self.assertEqual(_FINISHER_HEADER, result)
+    def test_header_is_based_on_content_only(self) -> None:
+        result = _derive_header("Strength (No Clock)")
+        self.assertIn("BUILD THE BASE", result)
 
     def test_amrap_keyword_matched(self) -> None:
-        result = _derive_header("15-Min AMRAP", has_finisher=False)
+        result = _derive_header("15-Min AMRAP")
         self.assertIn("KEEP MOVING", result)
 
     def test_emom_keyword_matched(self) -> None:
-        result = _derive_header("E2MOM x 10 (20 min)", has_finisher=False)
+        result = _derive_header("E2MOM x 10 (20 min)")
         self.assertIn("CLOCK", result)
 
     def test_rounds_for_time_keyword_matched(self) -> None:
-        result = _derive_header("5 Rounds for Time — Waterfall Start", has_finisher=False)
+        result = _derive_header("5 Rounds for Time — Waterfall Start")
         self.assertIn("EVERY ROUND", result)
 
     def test_chipper_keyword_matched(self) -> None:
-        result = _derive_header("Team Chipper — For Time", has_finisher=False)
+        result = _derive_header("Team Chipper — For Time")
         self.assertIn("CHIP AWAY", result)
 
     def test_strength_keyword_matched(self) -> None:
-        result = _derive_header("Strength (No Clock) + 1-Mile Benchmark", has_finisher=False)
+        result = _derive_header("Strength (No Clock) + 1-Mile Benchmark")
         self.assertIn("BUILD THE BASE", result)
 
     def test_team_keyword_matched(self) -> None:
-        result = _derive_header("Team Chipper + Synchronized Finisher", has_finisher=False)
+        result = _derive_header("Team Chipper + Synchronized Finisher")
         # "TEAM" should match before "CHIPPER" since we check "TEAM" last in tuple
         # and "CHIPPER" comes earlier — confirm chipper wins
         self.assertIn("CHIP AWAY", result)
 
     def test_default_header_for_unrecognised_content(self) -> None:
-        result = _derive_header("Mystery Format", has_finisher=False)
+        result = _derive_header("Mystery Format")
         self.assertIn("BRING YOUR BEST", result)
 
-    def test_finisher_flag_overrides_content_keywords(self) -> None:
-        # Even a known keyword should yield finisher header when has_finisher=True
-        result = _derive_header("AMRAP + Core Finisher", has_finisher=True)
-        self.assertEqual(_FINISHER_HEADER, result)
+    def test_finisher_word_in_content_does_not_override_keyword(self) -> None:
+        result = _derive_header("AMRAP + Core Finisher")
+        self.assertIn("KEEP MOVING", result)
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +88,9 @@ class PromptWithFinisherTests(unittest.TestCase):
         )
         self.prompt = build_image_prompt(self.workout)
 
-    def test_contains_finisher_header(self) -> None:
-        self.assertIn(_FINISHER_HEADER, self.prompt)
+    def test_uses_content_based_header_even_with_finisher(self) -> None:
+        self.assertIn("BUILD THE BASE", self.prompt)
+        self.assertNotIn("THERE'S A FINISHER AT THE END", self.prompt)
 
     def test_subheader_is_content_uppercased(self) -> None:
         self.assertIn("STRENGTH (NO CLOCK) + 1-MILE BENCHMARK", self.prompt)
@@ -262,9 +262,10 @@ class MultiPartFinisherPromptTests(unittest.TestCase):
         self.assertIn("Plate Getups", prompt)
         self.assertIn("Pull Ups", prompt)
 
-    def test_finisher_header_used_for_multipart(self) -> None:
+    def test_finisher_presence_does_not_change_header(self) -> None:
         prompt = build_image_prompt(self._two_part_workout())
-        self.assertIn(_FINISHER_HEADER, prompt)
+        self.assertIn(_DEFAULT_HEADER, prompt)
+        self.assertNotIn("THERE'S A FINISHER AT THE END", prompt)
 
     def test_wod_movements_not_mixed_into_finisher(self) -> None:
         prompt = build_image_prompt(self._two_part_workout())

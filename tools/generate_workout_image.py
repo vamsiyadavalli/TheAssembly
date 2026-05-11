@@ -3,7 +3,7 @@
 Modes:
   poster  — Deterministic Pillow-based poster renderer (no API key required).
   prompt  — Export a structured Gemini-ready prompt as a .txt file.
-  gemini  — Generate a real workout image using Gemini 2.5 Flash Image (requires GEMINI_API_KEY).
+  gemini  — Generate a real workout image using Gemini 3.1 Flash Image (requires GEMINI_API_KEY).
 
 Usage (from the TheAssembly/ repo root):
     python tools/generate_workout_image.py
@@ -15,7 +15,7 @@ Usage (from the TheAssembly/ repo root):
 
 Environment variables for gemini mode:
     GEMINI_API_KEY  (or GOOGLE_API_KEY as fallback)
-    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.5-flash-image)
+    GEMINI_IMAGE_MODEL        optional model override (default: gemini-3.1-flash-image)
     GEMINI_IMAGE_ASPECT_RATIO optional aspect ratio override (default: 16:9)
 
 Exit codes:
@@ -243,8 +243,8 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     model = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_MODEL",
-        default="gemini-2.5-flash-image",
-    ) or "gemini-2.5-flash-image"
+        default="gemini-3.1-flash-image",
+    ) or "gemini-3.1-flash-image"
     aspect_ratio = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_ASPECT_RATIO",
         default="16:9",
@@ -273,13 +273,6 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     prompt = prompt if prompt is not None else build_image_prompt(workout)
     _validate_prompt_preflight(prompt)
-
-    # Save the prompt alongside the PNG so the generation input is always retrievable.
-    prompt_path = output_path.with_suffix(".prompt.txt")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_path.write_text(prompt, encoding="utf-8")
-    print(f"[info] Prompt saved  : {prompt_path}")
-
     print(f"[info] Prompt chars  : {len(prompt)}")
     print(f"[info] Model         : {model}")
     print(f"[info] Aspect ratio  : {aspect_ratio}")
@@ -367,7 +360,6 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "outcome": "unknown",
         "effective_mode": None,
         "output_path": str(output_path),
-        "prompt_path": None,
         "prompt_sha256": None,
         "model": None,
         "aspect_ratio": None,
@@ -428,7 +420,6 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "status": "success",
                 "outcome": outcome,
                 "effective_mode": "gemini",
-                "prompt_path": str(output_path.with_suffix(".prompt.txt")),
                 "prompt_length": len(prompt_for_run),
                 "prompt_sha256": _prompt_sha256(prompt_for_run),
                 "model": model,

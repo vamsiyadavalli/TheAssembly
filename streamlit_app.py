@@ -830,8 +830,8 @@ def _build_photos_html(photos: list[PhotoRecord]) -> tuple[str, str]:
 def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | None) -> str:
     """Build a short friendly pre-workout caption from workout structure and weather."""
     content = workout.workout_content.lower()
-    has_finisher = any(m.section.lower() == "finisher" for m in workout.movements)
-    movement_count = len(workout.movements)
+    main_movements = [m for m in workout.movements if m.section.strip().lower() != "finisher"]
+    movement_count = len(main_movements)
 
     weather_feel = ""
     if weather:
@@ -844,8 +844,6 @@ def _generate_workout_caption(workout: WorkoutRecord, weather: WorkoutWeather | 
 
     if "partner" in content or "pair" in content or "team" in content:
         return "Partner in Pain — your partner is your pace car today. Lean on each other."
-    if has_finisher:
-        return "There's a finisher at the end. Pace yourself, then let it rip."
     if "amrap" in content:
         return "Every rep counts. Find your flow and keep the clock moving."
     if "for time" in content:
