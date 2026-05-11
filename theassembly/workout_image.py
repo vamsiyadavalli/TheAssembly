@@ -5,7 +5,7 @@ Pure function — no I/O, no external dependencies.
 
 Prompt structure (modelled on the high-fidelity CrossFit banner reference):
   1. Style intro paragraph
-  2. Header  — motivational, derived from workout type / finisher presence
+    2. Header  — motivational, derived from main workout type
   3. Sub-header — workout_content uppercased
   4. Numbered movement panels for main WOD movements
   5. Finisher panel — only when section='Finisher' movements exist
@@ -59,8 +59,6 @@ _SEPARATOR = "\n\n---\n\n"
 # Motivational header derivation
 # ---------------------------------------------------------------------------
 
-_FINISHER_HEADER = "THERE'S A FINISHER AT THE END. PACE YOURSELF, THEN LET IT RIP."
-
 # Ordered — first keyword match wins.
 _CONTENT_HEADERS: tuple[tuple[str, str], ...] = (
     ("AMRAP",           "KEEP MOVING. EVERY REP COUNTS. HOW FAR CAN YOU GO?"),
@@ -75,10 +73,8 @@ _CONTENT_HEADERS: tuple[tuple[str, str], ...] = (
 _DEFAULT_HEADER = "BRING YOUR BEST. LEAVE IT ALL ON THE FLOOR. LET'S WORK."
 
 
-def _derive_header(workout_content: str, has_finisher: bool) -> str:
+def _derive_header(workout_content: str) -> str:
     """Return a short motivational header line for the banner."""
-    if has_finisher:
-        return _FINISHER_HEADER
     content_upper = workout_content.upper()
     for keyword, header in _CONTENT_HEADERS:
         if keyword in content_upper:
@@ -193,7 +189,7 @@ def build_image_prompt(workout: "WorkoutRecord") -> str:
     _validate_poster_input(workout, wod_movements, finisher_movements)
     has_finisher = bool(finisher_movements)
 
-    header = _derive_header(workout.workout_content, has_finisher)
+    header = _derive_header(workout.workout_content)
     subheader = workout.workout_content.upper()
 
     sections: list[str] = []
