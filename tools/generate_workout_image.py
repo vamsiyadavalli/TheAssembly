@@ -3,7 +3,7 @@
 Modes:
   poster  — Deterministic Pillow-based poster renderer (no API key required).
   prompt  — Export a structured Gemini-ready prompt as a .txt file.
-  gemini  — Generate a real workout image using Gemini 2.0 Flash (requires GEMINI_API_KEY).
+  gemini  — Generate a real workout image using Gemini 2.5 Flash (requires GEMINI_API_KEY).
 
 Usage (from the TheAssembly/ repo root):
     python tools/generate_workout_image.py
@@ -15,7 +15,7 @@ Usage (from the TheAssembly/ repo root):
 
 Environment variables for gemini mode:
     GEMINI_API_KEY  (or GOOGLE_API_KEY as fallback)
-    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.0-flash-preview-image-generation)
+    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.5-flash-preview-04-17)
     GEMINI_IMAGE_ASPECT_RATIO optional aspect ratio override (default: 16:9)
 
 Exit codes:
@@ -243,8 +243,8 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     model = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_MODEL",
-        default="gemini-2.0-flash-preview-image-generation",
-    ) or "gemini-2.0-flash-preview-image-generation"
+        default="gemini-2.5-flash-preview-04-17",
+    ) or "gemini-2.5-flash-preview-04-17"
     aspect_ratio = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_ASPECT_RATIO",
         default="16:9",

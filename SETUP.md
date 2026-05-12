@@ -167,7 +167,7 @@ If you prefer not to install Python packages locally, run image generation in Do
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_IMAGE_MODEL=gemini-2.0-flash-preview-image-generation
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-preview-04-17
 GEMINI_IMAGE_ASPECT_RATIO=16:9
 ```
 
