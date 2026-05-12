@@ -589,6 +589,64 @@ class RunGeminiModeTests(unittest.TestCase):
             self.assertEqual(meta["validation_passed"], False)
             self.assertIn("quality_failed", meta["validation_error"])
 
+    def test_process_date_gemini_success_writes_prompt_artifact(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            if "tools.generate_workout_image" in sys.modules:
+                del sys.modules["tools.generate_workout_image"]
+
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "generate_workout_image",
+                Path(__file__).parent.parent / "tools" / "generate_workout_image.py",
+            )
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+            workout = _make_workout()
+            args = type(
+                "Args",
+                (),
+                {
+                    "output_dir": tmpdir,
+                    "mode": "gemini",
+                    "fallback": "prompt",
+                    "overwrite": False,
+                },
+            )()
+
+            prompt_text = "Semantic Source Of Truth\nWOD_COUNT: 1\nWOD_ROWS:\n1|10|Burpees"
+            with patch.object(
+                mod,
+                "_run_gemini_mode",
+                return_value=(
+                    prompt_text,
+                    "gemini-2.5-flash-image",
+                    "16:9",
+                    {
+                        "image_bytes": 3,
+                        "image_width": 1,
+                        "image_height": 1,
+                        "langgraph_enabled": 0,
+                    },
+                ),
+            ):
+                code, outcome = mod._process_date(workout.workout_date, args, [workout])
+
+            self.assertEqual(code, 0)
+            self.assertEqual(outcome, "gemini")
+
+            prompt_path = Path(tmpdir) / f"{workout.workout_date.isoformat()}.txt"
+            self.assertTrue(prompt_path.exists())
+            self.assertEqual(prompt_path.read_text(encoding="utf-8"), prompt_text)
+
+            meta = json.loads((Path(tmpdir) / f"{workout.workout_date.isoformat()}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["status"], "success")
+            self.assertEqual(meta["effective_mode"], "gemini")
+            self.assertEqual(meta["prompt_path"], str(prompt_path))
+            self.assertEqual(meta["prompt_length"], len(prompt_text))
+            self.assertTrue(meta["prompt_sha256"])
+
     def test_process_date_writes_skipped_metadata_when_output_exists(self) -> None:
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
