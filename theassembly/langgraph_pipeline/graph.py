@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any
+import uuid
 
 from .nodes import (
     architect_node,
@@ -13,6 +16,49 @@ from .nodes import (
     validation_node,
 )
 from .state import PosterState
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _write_trace_file(trace: dict[str, Any], output_path: Path) -> Path:
+    trace_path = output_path.with_suffix(".trace.json")
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
+    return trace_path
+
+
+def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
+    node_order = ["reasoning", "editor", "architect", "designer", "generator", "validator"]
+    node_traces = result.get("node_traces", {}) if isinstance(result.get("node_traces", {}), dict) else {}
+    nodes = {name: node_traces.get(name, {}) for name in node_order if node_traces.get(name)}
+    return {
+        "schema_version": "1.0.0",
+        "run_id": str(result.get("run_id", "")),
+        "run_started_at_utc": str(result.get("run_started_at_utc", "")),
+        "run_finished_at_utc": _utc_now_iso(),
+        "status": "success" if result.get("is_valid") else "failed",
+        "retry_count": int(result.get("retry_count", 0)),
+        "max_retries": int(result.get("max_retries", 0)),
+        "retry_history": list(result.get("retry_history", [])),
+        "settings": {
+            "trace_level": str(result.get("trace_level", "standard")),
+            "save_intermediate_prompts": bool(result.get("save_intermediate_prompts", False)),
+            "redact_secrets": bool(result.get("redact_secrets", True)),
+            "model": str(result.get("model", "")),
+            "aspect_ratio": str(result.get("aspect_ratio", "")),
+        },
+        "nodes": nodes,
+        "final": {
+            "is_valid": bool(result.get("is_valid", False)),
+            "similarity_score": float(result.get("similarity_score", 0.0)),
+            "feedback": str(result.get("feedback", "")),
+            "image_path": str(result.get("image_path", "")),
+            "validation_result": result.get("validation_result", {}),
+            "error_log": list(result.get("error_log", [])),
+        },
+    }
 
 
 def _compile_graph():
@@ -60,9 +106,14 @@ def run_poster_pipeline(
     max_retry_delay_seconds: float,
     retry_jitter_ratio: float,
     max_validation_retries: int = 3,
+    trace_enabled: bool = True,
+    trace_level: str = "standard",
+    save_intermediate_prompts: bool = False,
+    redact_secrets: bool = True,
 ) -> dict[str, Any]:
     """Run the LangGraph poster pipeline and return final state."""
     graph = _compile_graph()
+    run_id = str(uuid.uuid4())
     initial_state: PosterState = {
         "raw_wod": raw_wod,
         "output_path": str(output_path),
@@ -76,7 +127,23 @@ def run_poster_pipeline(
         "max_retries": max_validation_retries,
         "is_valid": False,
         "error_log": [],
+        "trace_enabled": trace_enabled,
+        "trace_level": trace_level,
+        "save_intermediate_prompts": save_intermediate_prompts,
+        "redact_secrets": redact_secrets,
+        "run_id": run_id,
+        "run_started_at_utc": _utc_now_iso(),
+        "node_traces": {},
+        "retry_history": [],
     }
 
     result = graph.invoke(initial_state)
-    return dict(result)
+    result_dict = dict(result)
+    result_dict["run_finished_at_utc"] = _utc_now_iso()
+
+    if trace_enabled:
+        trace = _build_trace_document(result_dict)
+        trace_path = _write_trace_file(trace, output_path)
+        result_dict["trace_path"] = str(trace_path)
+
+    return result_dict
