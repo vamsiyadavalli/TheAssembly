@@ -3,7 +3,7 @@
 Modes:
   poster  — Deterministic Pillow-based poster renderer (no API key required).
   prompt  — Export a structured Gemini-ready prompt as a .txt file.
-  gemini  — Generate a real workout image using Gemini 3.1 Flash Image (requires GEMINI_API_KEY).
+  gemini  — Generate a real workout image using Gemini 2.0 Flash (requires GEMINI_API_KEY).
 
 Usage (from the TheAssembly/ repo root):
     python tools/generate_workout_image.py
@@ -15,7 +15,7 @@ Usage (from the TheAssembly/ repo root):
 
 Environment variables for gemini mode:
     GEMINI_API_KEY  (or GOOGLE_API_KEY as fallback)
-    GEMINI_IMAGE_MODEL        optional model override (default: gemini-3.1-flash-image)
+    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.0-flash-preview-image-generation)
     GEMINI_IMAGE_ASPECT_RATIO optional aspect ratio override (default: 16:9)
 
 Exit codes:
@@ -219,7 +219,7 @@ def _run_prompt_mode(workout, output_path: Path, prompt: str | None = None) -> s
     return prompt
 
 
-def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str, dict[str, int]]:
+def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str, dict[str, object]]:
     """Generate an AI workout image via Gemini Developer API and save as PNG.
 
     Raises:
@@ -243,8 +243,8 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     model = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_MODEL",
-        default="gemini-3.1-flash-image",
-    ) or "gemini-3.1-flash-image"
+        default="gemini-2.0-flash-preview-image-generation",
+    ) or "gemini-2.0-flash-preview-image-generation"
     aspect_ratio = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_ASPECT_RATIO",
         default="16:9",
@@ -278,6 +278,11 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
         validation_retries = max(0, int(validation_retries_raw))
     except ValueError:
         validation_retries = 3
+    langgraph_trace_enabled_raw = _setting_from_env_or_secrets("LANGGRAPH_TRACE_ENABLED", default="true") or "true"
+    langgraph_trace_enabled = langgraph_trace_enabled_raw.strip().lower() in {"1", "true", "yes", "on"}
+    langgraph_trace_level = _setting_from_env_or_secrets("LANGGRAPH_TRACE_LEVEL", default="standard") or "standard"
+    langgraph_save_prompts_raw = _setting_from_env_or_secrets("LANGGRAPH_SAVE_INTERMEDIATE_PROMPTS", default="false") or "false"
+    langgraph_save_prompts = langgraph_save_prompts_raw.strip().lower() in {"1", "true", "yes", "on"}
 
     prompt = prompt if prompt is not None else build_image_prompt(workout)
     _validate_prompt_preflight(prompt)
@@ -302,6 +307,9 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
                 max_retry_delay_seconds=max_retry_delay_seconds,
                 retry_jitter_ratio=retry_jitter_ratio,
                 max_validation_retries=validation_retries,
+                trace_enabled=langgraph_trace_enabled,
+                trace_level=langgraph_trace_level,
+                save_intermediate_prompts=langgraph_save_prompts,
             )
             if not pipeline_result.get("is_valid", False):
                 feedback = str(pipeline_result.get("feedback", "unknown validation error"))
@@ -314,6 +322,7 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
             image_metrics["langgraph_similarity_score"] = float(pipeline_result.get("similarity_score", 0.0))
             image_metrics["langgraph_validation_passed"] = 1 if pipeline_result.get("is_valid") else 0
             image_metrics["langgraph_feedback"] = str(pipeline_result.get("feedback", ""))
+            image_metrics["langgraph_trace_path"] = str(pipeline_result.get("trace_path", ""))
         except RuntimeError:
             raise
         except Exception as exc:
@@ -420,6 +429,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "langgraph_similarity_score": None,
         "langgraph_validation_passed": None,
         "langgraph_feedback": None,
+        "langgraph_trace_path": None,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -486,6 +496,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                     else None
                 ),
                 "langgraph_feedback": image_metrics.get("langgraph_feedback"),
+                "langgraph_trace_path": image_metrics.get("langgraph_trace_path"),
             })
         except RuntimeError as exc:
             error_text = str(exc)

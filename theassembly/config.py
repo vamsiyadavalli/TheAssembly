@@ -57,7 +57,7 @@ def load_config(secrets: Mapping[str, Any] | None = None) -> AppConfig:
         admin_password=_lookup_setting("ADMIN_PASSWORD", secrets),
         timezone_name=_lookup_setting("APP_TIMEZONE", secrets, "America/New_York") or "America/New_York",
         gemini_api_key=gemini_api_key,
-        gemini_image_model=_lookup_setting("GEMINI_IMAGE_MODEL", secrets, "gemini-3.1-flash-image")
-        or "gemini-3.1-flash-image",
+        gemini_image_model=_lookup_setting("GEMINI_IMAGE_MODEL", secrets, "gemini-2.0-flash-preview-image-generation")
+        or "gemini-2.0-flash-preview-image-generation",
         gemini_image_aspect_ratio=_lookup_setting("GEMINI_IMAGE_ASPECT_RATIO", secrets, "16:9") or "16:9",
     )

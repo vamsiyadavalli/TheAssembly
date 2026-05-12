@@ -27,3 +27,14 @@ class PosterState(TypedDict, total=False):
     max_retries_api: int
     max_retry_delay_seconds: float
     retry_jitter_ratio: float
+
+    trace_enabled: bool
+    trace_level: str
+    save_intermediate_prompts: bool
+    redact_secrets: bool
+    run_id: str
+    run_started_at_utc: str
+    run_finished_at_utc: str
+    trace_path: str
+    node_traces: dict[str, dict[str, Any]]
+    retry_history: list[dict[str, Any]]
