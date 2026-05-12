@@ -310,7 +310,7 @@ python tools/generate_workout_image.py --date 2026-04-28 --mode prompt
 |---|---|---|
 | `GEMINI_API_KEY` | — | Gemini Developer API key (required) |
 | `GOOGLE_API_KEY` | — | Fallback if `GEMINI_API_KEY` is not set |
-| `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-preview-04-17` | Model override |
+| `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-image` | Model override |
 | `GEMINI_IMAGE_ASPECT_RATIO` | `16:9` | Aspect ratio for the generated image |
 
 > **Note:** Generated images include a SynthID watermark per Gemini's image generation policy.

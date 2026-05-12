@@ -109,7 +109,7 @@ class GenerateGeminiImageTests(unittest.TestCase):
                     prompt="test prompt",
                     output_path=output_path,
                     api_key="test-api-key",
-                    model="gemini-2.5-flash-preview-04-17",
+                    model="gemini-2.5-flash-image",
                     aspect_ratio="16:9",
                 )
 

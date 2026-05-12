@@ -15,7 +15,7 @@ Usage (from the TheAssembly/ repo root):
 
 Environment variables for gemini mode:
     GEMINI_API_KEY  (or GOOGLE_API_KEY as fallback)
-    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.5-flash-preview-04-17)
+    GEMINI_IMAGE_MODEL        optional model override (default: gemini-2.5-flash-image)
     GEMINI_IMAGE_ASPECT_RATIO optional aspect ratio override (default: 16:9)
 
 Exit codes:
@@ -243,8 +243,8 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
     model = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_MODEL",
-        default="gemini-2.5-flash-preview-04-17",
-    ) or "gemini-2.5-flash-preview-04-17"
+        default="gemini-2.5-flash-image",
+    ) or "gemini-2.5-flash-image"
     aspect_ratio = _setting_from_env_or_secrets(
         "GEMINI_IMAGE_ASPECT_RATIO",
         default="16:9",
