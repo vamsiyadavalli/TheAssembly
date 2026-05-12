@@ -271,31 +271,75 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
     except ValueError:
         retry_jitter_ratio = 0.1
 
+    langgraph_enabled_raw = _setting_from_env_or_secrets("LANGGRAPH_ENABLED", default="false") or "false"
+    langgraph_enabled = langgraph_enabled_raw.strip().lower() in {"1", "true", "yes", "on"}
+    validation_retries_raw = _setting_from_env_or_secrets("LANGGRAPH_VALIDATION_MAX_RETRIES", default="3") or "3"
+    try:
+        validation_retries = max(0, int(validation_retries_raw))
+    except ValueError:
+        validation_retries = 3
+
     prompt = prompt if prompt is not None else build_image_prompt(workout)
     _validate_prompt_preflight(prompt)
     print(f"[info] Prompt chars  : {len(prompt)}")
     print(f"[info] Model         : {model}")
     print(f"[info] Aspect ratio  : {aspect_ratio}")
     print(f"[info] Max retries   : {max_retries}")
-    print("[info] Calling Gemini API...")
+    print(f"[info] LangGraph     : {'enabled' if langgraph_enabled else 'disabled'}")
 
-    try:
-        image_metrics = generate_gemini_image(
-            prompt=prompt,
-            output_path=output_path,
-            api_key=api_key,
-            model=model,
-            aspect_ratio=aspect_ratio,
-            max_retries=max_retries,
-            max_retry_delay_seconds=max_retry_delay_seconds,
-            retry_jitter_ratio=retry_jitter_ratio,
-        )
-    except GeminiAPIError as exc:
-        raise RuntimeError(f"[{exc.info.category}] {exc.info.message}") from exc
-    except GeminiImageError as exc:
-        raise RuntimeError(f"[quality_failed] {exc}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Gemini API call failed: {exc}") from exc
+    if langgraph_enabled:
+        try:
+            from theassembly.langgraph_pipeline import run_poster_pipeline
+
+            print("[info] Running LangGraph pipeline...")
+            pipeline_result = run_poster_pipeline(
+                raw_wod=workout.to_dict(),
+                output_path=output_path,
+                api_key=api_key,
+                model=model,
+                aspect_ratio=aspect_ratio,
+                max_retries_api=max_retries,
+                max_retry_delay_seconds=max_retry_delay_seconds,
+                retry_jitter_ratio=retry_jitter_ratio,
+                max_validation_retries=validation_retries,
+            )
+            if not pipeline_result.get("is_valid", False):
+                feedback = str(pipeline_result.get("feedback", "unknown validation error"))
+                raise RuntimeError(f"[quality_failed] LangGraph validation failed: {feedback}")
+
+            prompt = str(pipeline_result.get("final_graphic_prompt") or prompt)
+            image_metrics = dict(pipeline_result.get("image_metrics") or {})
+            image_metrics["langgraph_enabled"] = 1
+            image_metrics["langgraph_retry_count"] = int(pipeline_result.get("retry_count", 0))
+            image_metrics["langgraph_similarity_score"] = float(pipeline_result.get("similarity_score", 0.0))
+            image_metrics["langgraph_validation_passed"] = 1 if pipeline_result.get("is_valid") else 0
+            image_metrics["langgraph_feedback"] = str(pipeline_result.get("feedback", ""))
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"[quality_failed] LangGraph pipeline failed: {exc}") from exc
+    else:
+        print("[info] Calling Gemini API...")
+        try:
+            image_metrics = generate_gemini_image(
+                prompt=prompt,
+                output_path=output_path,
+                api_key=api_key,
+                model=model,
+                aspect_ratio=aspect_ratio,
+                max_retries=max_retries,
+                max_retry_delay_seconds=max_retry_delay_seconds,
+                retry_jitter_ratio=retry_jitter_ratio,
+            )
+            image_metrics = image_metrics or {}
+        except GeminiAPIError as exc:
+            raise RuntimeError(f"[{exc.info.category}] {exc.info.message}") from exc
+        except GeminiImageError as exc:
+            raise RuntimeError(f"[quality_failed] {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Gemini API call failed: {exc}") from exc
+
+        image_metrics["langgraph_enabled"] = 0
 
     return prompt, model, aspect_ratio, image_metrics
 
@@ -371,6 +415,11 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "validation_error": None,
         "error_category": None,
         "error_message": None,
+        "langgraph_enabled": None,
+        "langgraph_retry_count": None,
+        "langgraph_similarity_score": None,
+        "langgraph_validation_passed": None,
+        "langgraph_feedback": None,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -428,6 +477,15 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "image_width": image_metrics.get("image_width"),
                 "image_height": image_metrics.get("image_height"),
                 "validation_passed": True,
+                "langgraph_enabled": bool(image_metrics.get("langgraph_enabled", 0)),
+                "langgraph_retry_count": image_metrics.get("langgraph_retry_count"),
+                "langgraph_similarity_score": image_metrics.get("langgraph_similarity_score"),
+                "langgraph_validation_passed": (
+                    bool(image_metrics.get("langgraph_validation_passed"))
+                    if image_metrics.get("langgraph_enabled", 0)
+                    else None
+                ),
+                "langgraph_feedback": image_metrics.get("langgraph_feedback"),
             })
         except RuntimeError as exc:
             error_text = str(exc)
