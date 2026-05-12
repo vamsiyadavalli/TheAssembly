@@ -395,7 +395,7 @@ def generate_gemini_image(
     prompt: str,
     output_path: "Path",
     api_key: str,
-    model: str = "gemini-2.0-flash-preview-image-generation",
+    model: str = "gemini-2.5-flash-preview-04-17",
     aspect_ratio: str = "16:9",
     max_retries: int = 2,
     max_retry_delay_seconds: float = 300.0,
