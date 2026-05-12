@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable
 
@@ -213,7 +215,47 @@ def _default_extract_text(image_path: str) -> str:
 
 
 def _normalize_for_match(text: str) -> str:
-    return " ".join(text.lower().split())
+    normalized = text.lower()
+    normalized = re.sub(r"[\u2010-\u2015]", "-", normalized)
+    normalized = normalized.replace("/", " ")
+
+    # Canonicalize high-frequency movement variants that OCR commonly mutates.
+    replacements = (
+        (r"\bpull[\s-]*ups?\b", "pullup"),
+        (r"\bpush[\s-]*ups?\b", "pushup"),
+        (r"\bair[\s-]*squats?\b", "airsquat"),
+        (r"\bdouble[\s-]*unders?\b", "doubleunder"),
+    )
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized)
+
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    return " ".join(normalized.split())
+
+
+def _contains_expected_token(extracted: str, token: str, *, threshold: float = 0.92) -> bool:
+    if token in extracted:
+        return True
+
+    token_words = token.split()
+    extracted_words = extracted.split()
+    if not token_words or not extracted_words:
+        return False
+
+    min_window = max(1, len(token_words) - 1)
+    max_window = min(len(extracted_words), len(token_words) + 1)
+    best = 0.0
+
+    for window in range(min_window, max_window + 1):
+        for idx in range(0, len(extracted_words) - window + 1):
+            candidate = " ".join(extracted_words[idx: idx + window])
+            ratio = SequenceMatcher(None, token, candidate).ratio()
+            if ratio > best:
+                best = ratio
+            if best >= threshold:
+                return True
+
+    return False
 
 
 def verify_image_accuracy(
@@ -246,7 +288,7 @@ def verify_image_accuracy(
             "extracted_text": extracted_raw,
         }
 
-    mismatches = [token for token in checks if token not in extracted]
+    mismatches = [token for token in checks if not _contains_expected_token(extracted, token)]
     matched = len(checks) - len(mismatches)
     similarity = matched / len(checks)
 
