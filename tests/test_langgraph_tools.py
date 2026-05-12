@@ -97,6 +97,36 @@ class VerifyImageAccuracyTests(unittest.TestCase):
         self.assertFalse(result["is_valid"])
         self.assertLess(result["similarity_score"], 1.0)
 
+    def test_finisher_text_variants_are_normalized(self) -> None:
+        expected = [
+            {"name": "Pull Ups", "reps": "4", "rx_weight": ""},
+            {"name": "Pushups", "reps": "6", "rx_weight": ""},
+            {"name": "Air Squats", "reps": "8", "rx_weight": ""},
+        ]
+
+        def fake_extractor(_: str) -> str:
+            return "4 pull-up\n6 push up\n8 air squat"
+
+        result = verify_image_accuracy("unused.jpg", expected, text_extractor=fake_extractor)
+        self.assertTrue(result["is_valid"])
+        self.assertEqual(result["similarity_score"], 1.0)
+        self.assertEqual(result["mismatches"], [])
+
+    def test_semantic_mismatch_still_fails_after_normalization(self) -> None:
+        expected = [
+            {"name": "Pull Ups", "reps": "4", "rx_weight": ""},
+            {"name": "Pushups", "reps": "6", "rx_weight": ""},
+            {"name": "Air Squats", "reps": "8", "rx_weight": ""},
+        ]
+
+        def fake_extractor(_: str) -> str:
+            return "5 pull-up\n6 push up\n8 air squat"
+
+        result = verify_image_accuracy("unused.jpg", expected, text_extractor=fake_extractor)
+        self.assertFalse(result["is_valid"])
+        self.assertLess(result["similarity_score"], 1.0)
+        self.assertIn("4 pullup", result["mismatches"])
+
 
 if __name__ == "__main__":
     unittest.main()

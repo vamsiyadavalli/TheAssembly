@@ -259,6 +259,124 @@ class GenerateGeminiImageTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class RunGeminiModeTests(unittest.TestCase):
+    def test_langgraph_enabled_uses_run_poster_pipeline(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "2026-04-28.png"
+            workout = _make_workout()
+
+            if "tools.generate_workout_image" in sys.modules:
+                del sys.modules["tools.generate_workout_image"]
+
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "generate_workout_image",
+                Path(__file__).parent.parent / "tools" / "generate_workout_image.py",
+            )
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+            valid_prompt = (
+                "Semantic Source Of Truth\n"
+                "WOD_COUNT: 1\n"
+                "WOD_ROWS:\n"
+                "1|10|Burpees\n"
+                "Header (large, bold):\n"
+                "Workout Sections (left/middle panels with images):\n"
+                "Design Style:\n"
+            )
+
+            pipeline_result = {
+                "is_valid": True,
+                "final_graphic_prompt": valid_prompt,
+                "image_metrics": {"image_bytes": 123, "image_width": 1024, "image_height": 576},
+                "retry_count": 2,
+                "similarity_score": 0.95,
+                "feedback": "ok",
+                "trace_path": str(output_path.with_suffix(".trace.json")),
+            }
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_API_KEY": "AIzaSyDUMMY_VALID_LENGTH_KEY",
+                    "LANGGRAPH_ENABLED": "true",
+                    "LANGGRAPH_VALIDATION_MAX_RETRIES": "4",
+                    "LANGGRAPH_TRACE_ENABLED": "true",
+                    "LANGGRAPH_TRACE_LEVEL": "verbose",
+                    "LANGGRAPH_SAVE_INTERMEDIATE_PROMPTS": "true",
+                },
+                clear=False,
+            ):
+                with patch("theassembly.workout_image.build_image_prompt", return_value=valid_prompt):
+                    with patch("theassembly.workout_image.generate_gemini_image") as mock_generate:
+                        with patch("theassembly.langgraph_pipeline.run_poster_pipeline", return_value=pipeline_result) as mock_pipeline:
+                            prompt, model, aspect_ratio, image_metrics = mod._run_gemini_mode(workout, output_path)
+
+            self.assertEqual(prompt, valid_prompt)
+            self.assertEqual(model, "gemini-2.5-flash-image")
+            self.assertEqual(aspect_ratio, "16:9")
+            self.assertEqual(image_metrics["langgraph_enabled"], 1)
+            self.assertEqual(image_metrics["langgraph_retry_count"], 2)
+            self.assertAlmostEqual(image_metrics["langgraph_similarity_score"], 0.95)
+            self.assertEqual(image_metrics["langgraph_validation_passed"], 1)
+            self.assertEqual(image_metrics["langgraph_feedback"], "ok")
+            self.assertTrue(image_metrics["langgraph_trace_path"].endswith(".trace.json"))
+            mock_generate.assert_not_called()
+            self.assertTrue(mock_pipeline.called)
+
+            called = mock_pipeline.call_args.kwargs
+            self.assertEqual(called["max_validation_retries"], 4)
+            self.assertEqual(called["trace_enabled"], True)
+            self.assertEqual(called["trace_level"], "verbose")
+            self.assertEqual(called["save_intermediate_prompts"], True)
+
+    def test_langgraph_enabled_validation_failure_raises_quality_failed(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "2026-04-28.png"
+            workout = _make_workout()
+
+            if "tools.generate_workout_image" in sys.modules:
+                del sys.modules["tools.generate_workout_image"]
+
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "generate_workout_image",
+                Path(__file__).parent.parent / "tools" / "generate_workout_image.py",
+            )
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+            valid_prompt = (
+                "Semantic Source Of Truth\n"
+                "WOD_COUNT: 1\n"
+                "WOD_ROWS:\n"
+                "1|10|Burpees\n"
+                "Header (large, bold):\n"
+                "Workout Sections (left/middle panels with images):\n"
+                "Design Style:\n"
+            )
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_API_KEY": "AIzaSyDUMMY_VALID_LENGTH_KEY",
+                    "LANGGRAPH_ENABLED": "true",
+                },
+                clear=False,
+            ):
+                with patch("theassembly.workout_image.build_image_prompt", return_value=valid_prompt):
+                    with patch(
+                        "theassembly.langgraph_pipeline.run_poster_pipeline",
+                        return_value={"is_valid": False, "feedback": "ocr mismatch"},
+                    ):
+                        with self.assertRaises(RuntimeError) as ctx:
+                            mod._run_gemini_mode(workout, output_path)
+
+            self.assertIn("[quality_failed]", str(ctx.exception))
+            self.assertIn("LangGraph validation failed", str(ctx.exception))
+
     def test_raises_runtime_error_when_no_api_key(self) -> None:
         import os, tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -588,6 +706,64 @@ class RunGeminiModeTests(unittest.TestCase):
             self.assertEqual(meta["effective_mode"], "prompt")
             self.assertEqual(meta["validation_passed"], False)
             self.assertIn("quality_failed", meta["validation_error"])
+
+    def test_process_date_gemini_success_writes_prompt_artifact(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            if "tools.generate_workout_image" in sys.modules:
+                del sys.modules["tools.generate_workout_image"]
+
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "generate_workout_image",
+                Path(__file__).parent.parent / "tools" / "generate_workout_image.py",
+            )
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+            workout = _make_workout()
+            args = type(
+                "Args",
+                (),
+                {
+                    "output_dir": tmpdir,
+                    "mode": "gemini",
+                    "fallback": "prompt",
+                    "overwrite": False,
+                },
+            )()
+
+            prompt_text = "Semantic Source Of Truth\nWOD_COUNT: 1\nWOD_ROWS:\n1|10|Burpees"
+            with patch.object(
+                mod,
+                "_run_gemini_mode",
+                return_value=(
+                    prompt_text,
+                    "gemini-2.5-flash-image",
+                    "16:9",
+                    {
+                        "image_bytes": 3,
+                        "image_width": 1,
+                        "image_height": 1,
+                        "langgraph_enabled": 0,
+                    },
+                ),
+            ):
+                code, outcome = mod._process_date(workout.workout_date, args, [workout])
+
+            self.assertEqual(code, 0)
+            self.assertEqual(outcome, "gemini")
+
+            prompt_path = Path(tmpdir) / f"{workout.workout_date.isoformat()}.txt"
+            self.assertTrue(prompt_path.exists())
+            self.assertEqual(prompt_path.read_text(encoding="utf-8"), prompt_text)
+
+            meta = json.loads((Path(tmpdir) / f"{workout.workout_date.isoformat()}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["status"], "success")
+            self.assertEqual(meta["effective_mode"], "gemini")
+            self.assertEqual(meta["prompt_path"], str(prompt_path))
+            self.assertEqual(meta["prompt_length"], len(prompt_text))
+            self.assertTrue(meta["prompt_sha256"])
 
     def test_process_date_writes_skipped_metadata_when_output_exists(self) -> None:
         import tempfile

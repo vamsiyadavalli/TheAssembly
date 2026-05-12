@@ -413,6 +413,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "outcome": "unknown",
         "effective_mode": None,
         "output_path": str(output_path),
+        "prompt_path": None,
         "prompt_sha256": None,
         "model": None,
         "aspect_ratio": None,
@@ -466,6 +467,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
             "status": "success",
             "outcome": outcome,
             "effective_mode": "prompt",
+            "prompt_path": str(output_path),
             "prompt_length": len(prompt),
             "prompt_sha256": _prompt_sha256(prompt),
             "validation_passed": True,
@@ -474,11 +476,14 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         prompt_for_run: str | None = None
         try:
             prompt_for_run, model, aspect_ratio, image_metrics = _run_gemini_mode(workout, output_path)
+            prompt_path = output_path.with_suffix(".txt")
+            prompt_path.write_text(prompt_for_run, encoding="utf-8")
             outcome = "gemini"
             metadata.update({
                 "status": "success",
                 "outcome": outcome,
                 "effective_mode": "gemini",
+                "prompt_path": str(prompt_path),
                 "prompt_length": len(prompt_for_run),
                 "prompt_sha256": _prompt_sha256(prompt_for_run),
                 "model": model,
@@ -532,6 +537,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                         "status": "success",
                         "outcome": f"{fallback_outcome}-{category}",
                         "effective_mode": args.fallback,
+                        "prompt_path": str(output_path.with_suffix(".txt")) if args.fallback == "prompt" else None,
                         "prompt_length": len(fallback_prompt) if fallback_prompt is not None else None,
                         "prompt_sha256": _prompt_sha256(fallback_prompt),
                         "validation_passed": False if category == "quality_failed" else None,
