@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import mimetypes
 from dataclasses import dataclass
 from datetime import date
@@ -304,6 +305,60 @@ class GitHubDataRepository:
                 return None
 
         return f"data:image/png;base64,{base64.b64encode(raw_bytes).decode()}"
+
+    def fetch_nutrition_baseline(self, target_date: date) -> dict[str, Any] | None:
+        """Return the daily nutrition baseline JSON, or None if absent/unreadable."""
+        nutrition_path = f"nutrition-baselines/{target_date.isoformat()}.json"
+        try:
+            response = requests.get(
+                self._contents_url(nutrition_path),
+                headers=self._headers(),
+                params={"ref": self.config.branch},
+                timeout=30,
+            )
+        except requests.RequestException:
+            return None
+
+        if response.status_code == 404:
+            return None
+        if response.status_code >= 400:
+            return None
+
+        payload = response.json()
+        raw_content = payload.get("content", "").replace("\n", "").strip()
+        text_content: str
+        if raw_content:
+            try:
+                text_content = base64.b64decode(raw_content).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                return None
+        else:
+            download_url = str(payload.get("download_url", "")).strip()
+            if not download_url:
+                return None
+            try:
+                download_response = requests.get(
+                    download_url,
+                    headers={
+                        "Authorization": f"Bearer {self.config.token}",
+                        "User-Agent": "TheAssembly",
+                    },
+                    timeout=30,
+                )
+            except requests.RequestException:
+                return None
+            if download_response.status_code >= 400:
+                return None
+            try:
+                text_content = download_response.content.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+
+        try:
+            parsed = json.loads(text_content)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     def upload_photo(self, date_str: str, original_filename: str, content_bytes: bytes) -> None:
         """Upload a photo to the photos folder, naming it {date_str}-{original_filename}."""
