@@ -7,7 +7,6 @@ from typing import Any
 import uuid
 
 from .nodes import (
-    architect_node,
     critic_node,
     designer_node,
     editor_node,
@@ -32,7 +31,7 @@ def _write_trace_file(trace: dict[str, Any], output_path: Path) -> Path:
 
 
 def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
-    node_order = ["reasoning", "editor", "nutrition", "architect", "designer", "critic", "generator", "validator"]
+    node_order = ["reasoning", "editor", "nutrition", "designer", "critic", "generator", "validator"]
     node_traces = result.get("node_traces", {}) if isinstance(result.get("node_traces", {}), dict) else {}
     nodes = {name: node_traces.get(name, {}) for name in node_order if node_traces.get(name)}
     return {
@@ -80,7 +79,6 @@ def _compile_graph():
     workflow.add_node("reasoning", reasoning_node)
     workflow.add_node("editor", editor_node)
     workflow.add_node("nutrition", nutrition_baseline_node)
-    workflow.add_node("architect", architect_node)
     workflow.add_node("designer", designer_node)
     workflow.add_node("critic", critic_node)
     workflow.add_node("generator", generator_node)
@@ -89,8 +87,7 @@ def _compile_graph():
     workflow.set_entry_point("reasoning")
     workflow.add_edge("reasoning", "editor")
     workflow.add_edge("editor", "nutrition")
-    workflow.add_edge("nutrition", "architect")
-    workflow.add_edge("architect", "designer")
+    workflow.add_edge("nutrition", "designer")
     workflow.add_edge("designer", "critic")
     workflow.add_edge("critic", "generator")
     workflow.add_edge("generator", "validator")
