@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class RiskFlag(BaseModel):
@@ -181,9 +181,41 @@ class CriticReviewModel(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class RecipeIdea(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=3, max_length=100)
+    fit_reason: str = Field(min_length=10, max_length=200)
+    source_link: str = Field(max_length=300)
+    category: Literal["cook_at_home", "quick_order_salad_bar"]
+
+
+class NutritionBaselineModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    training_day_type: Literal["high_intensity", "moderate_intensity", "low_intensity", "mixed"]
+    calorie_guidance: int = Field(ge=1500, le=5000)
+    protein_target_g: int = Field(ge=50, le=300)
+    carbs_target_g: int = Field(ge=50, le=400)
+    fat_target_g: int = Field(ge=30, le=200)
+    pre_workout_fuel: str = Field(min_length=10, max_length=200)
+    post_workout_fuel: str = Field(min_length=10, max_length=200)
+    hydration_ml: int = Field(ge=1500, le=5000)
+    electrolytes_mg_sodium: int = Field(ge=200, le=2000)
+    meal_timing_strategy: str = Field(min_length=10, max_length=200)
+    rationale: str = Field(min_length=20, max_length=500)
+    disclaimer: str = Field(
+        default="Consult a registered dietitian for personalized advice.",
+        max_length=300,
+    )
+    recipe_ideas: list[RecipeIdea] = Field(min_length=2, max_length=2)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
 REASONING_PLAN_SCHEMA = ReasoningPlanModel.model_json_schema()
 WORKOUT_CLASSIFICATION_SCHEMA = WorkoutClassificationModel.model_json_schema()
 LAYOUT_RECOMMENDATION_SCHEMA = LayoutRecommendationModel.model_json_schema()
 RISK_ASSESSMENT_SCHEMA = RiskAssessmentModel.model_json_schema()
 DESIGNER_PROMPT_SCHEMA = DesignerPromptModel.model_json_schema()
 CRITIC_REVIEW_SCHEMA = CriticReviewModel.model_json_schema()
+NUTRITION_BASELINE_SCHEMA = NutritionBaselineModel.model_json_schema()

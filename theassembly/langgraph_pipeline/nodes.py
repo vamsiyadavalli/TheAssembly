@@ -13,6 +13,7 @@ from .llm_schemas import (
     CriticReviewModel,
     DesignerPromptModel,
     LayoutRecommendationModel,
+    NutritionBaselineModel,
     ReasoningPlanModel,
     RiskAssessmentModel,
     WorkoutClassificationModel,
@@ -483,7 +484,112 @@ def editor_node(state: PosterState) -> PosterState:
     return update
 
 
-def architect_node(state: PosterState) -> PosterState:
+def nutrition_baseline_node(state: PosterState) -> PosterState:
+    """Generate a stateless daily nutrition baseline from workout intensity and stimulus.
+    
+    Non-blocking: failure in nutrition generation does not stop poster generation.
+    Output: independent dated JSON artifact, not embedded in poster.
+    """
+    started_at = _utc_now_iso()
+    started_mono = time.monotonic()
+    
+    # Extract inputs from prior nodes
+    reasoning_plan = state.get("reasoning_plan", {})
+    validated_wod = state.get("validated_wod", {})
+    intensity = reasoning_plan.get("intensity_profile", "mixed")
+    archetype = reasoning_plan.get("workout_archetype", "mixed")
+    stimulus = validated_wod.get("stimulus", "General fitness")
+    
+    # Build system prompt for nutrition guidance
+    system_prompt = (
+        "You are a nutrition advisor generating a daily baseline recommendation based on workout intensity. "
+        "Output ONLY a JSON response matching the provided schema. Do not add disclaimers, commentary, or markdown. "
+        "Recommendations should be stateless (no athlete profile) and workout-focused. "
+        "Always include exactly 2 recipe ideas: one for 'cook_at_home' and one for 'quick_order_salad_bar'. "
+        "Recipe links should be realistic and simple."
+    )
+    
+    # Map intensity to training day type
+    training_day_map = {
+        "high": "high_intensity",
+        "moderate": "moderate_intensity",
+        "low": "low_intensity",
+        "mixed": "mixed",
+    }
+    training_day_type = training_day_map.get(intensity, "mixed")
+    
+    # Build user prompt with workout context
+    user_prompt = (
+        f"Workout: {archetype.upper()} at {intensity.upper()} intensity\n"
+        f"Stimulus: {stimulus}\n"
+        f"Generate a nutrition baseline recommendation. Be specific on macros, hydration, and meal timing. "
+        f"Include rationale. Confidence should reflect how well the archetype/intensity maps to a clear macro distribution."
+    )
+    
+    llm_meta = {"model": "", "usage": {}}
+    llm_warnings: list[str] = []
+    
+    # Call LLM if available
+    if state.get("api_key") and state.get("reasoning_model"):
+        try:
+            result = call_text_agent(
+                api_key=str(state["api_key"]),
+                model=str(state["reasoning_model"]),
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                response_model=NutritionBaselineModel,
+                temperature=float(state.get("reasoning_temperature", 0.3)),
+                max_output_tokens=int(state.get("reasoning_max_output_tokens", 1200)),
+            )
+            nutrition = result.payload
+            llm_meta = {"model": result.model, "usage": result.usage}
+            status = "success"
+            feedback = ""
+        except TextAgentError as exc:
+            llm_warnings = [str(exc)]
+            nutrition = {}
+            status = "failed"
+            feedback = str(exc)
+    else:
+        # Fallback if no API key: return minimal valid baseline (non-blocking failure)
+        nutrition = {}
+        status = "skipped"
+        feedback = "No API key or reasoning model configured for nutrition"
+    
+    decision = {
+        "training_day_type": training_day_type,
+        "archetype": archetype,
+        "intensity": intensity,
+        "llm_used": bool(llm_meta["model"]),
+        "status": status,
+        "has_recipe_ideas": len(nutrition.get("recipe_ideas", [])) == 2 if nutrition else False,
+    }
+    
+    trace = _build_node_trace(
+        node_name="nutrition",
+        attempt=int(state.get("retry_count", 0)) + 1,
+        started_at=started_at,
+        started_monotonic=started_mono,
+        status=status,
+        decision=decision,
+        prompt=_prompt_trace(system_prompt=system_prompt, user_prompt=user_prompt, save_text=bool(state.get("save_intermediate_prompts", False))),
+        warnings=llm_warnings,
+        output_ref={"nutrition_baseline_sha256": _sha256_text(str(nutrition))} if nutrition else {},
+    )
+    
+    # Non-blocking: always continue, but record the result
+    update: PosterState = {
+        "nutrition_baseline": nutrition if nutrition else {},
+        "nutrition_generation_status": status,
+        "nutrition_feedback": feedback,
+    }
+    if llm_meta["model"]:
+        update.update(_with_llm_meta(state, "nutrition", llm_meta["model"], llm_meta["usage"]))
+    update.update(_with_node_trace(state, "nutrition", trace))
+    return update
+
+
+
     started_at = _utc_now_iso()
     started_mono = time.monotonic()
     validated = state.get("validated_wod")
