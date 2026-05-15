@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 import hmac
 import os
 import re
@@ -711,6 +712,87 @@ def _build_joke_html(joke: DailyJoke | None) -> str:
     )
 
 
+def _build_nutrition_html(nutrition_baseline: dict[str, Any]) -> str:
+    """Return HTML for the Daily Fuel side panel, or an empty string if unavailable."""
+    if not nutrition_baseline:
+        return ""
+
+    from html import escape as _esc
+
+    calories = int(nutrition_baseline.get("calorie_guidance", 0) or 0)
+    protein = int(nutrition_baseline.get("protein_target_g", 0) or 0)
+    carbs = int(nutrition_baseline.get("carbs_target_g", 0) or 0)
+    fat = int(nutrition_baseline.get("fat_target_g", 0) or 0)
+    hydration = int(nutrition_baseline.get("hydration_ml", 0) or 0)
+    sodium = int(nutrition_baseline.get("electrolytes_mg_sodium", 0) or 0)
+    pre_workout = str(nutrition_baseline.get("pre_workout_fuel", "No pre-workout guidance available.") or "No pre-workout guidance available.")
+    post_workout = str(nutrition_baseline.get("post_workout_fuel", "No post-workout guidance available.") or "No post-workout guidance available.")
+    timing = str(nutrition_baseline.get("meal_timing_strategy", "No timing strategy available.") or "No timing strategy available.")
+    rationale = str(nutrition_baseline.get("rationale", "") or "")
+    disclaimer = str(nutrition_baseline.get("disclaimer", "Consult a registered dietitian for personalized advice.") or "Consult a registered dietitian for personalized advice.")
+    confidence = float(nutrition_baseline.get("confidence", 0.0) or 0.0)
+    recipe_ideas = nutrition_baseline.get("recipe_ideas", [])
+    recipes_html = ""
+    category_labels = {
+        "cook_at_home": "Cook at home",
+        "quick_order_salad_bar": "Quick order",
+    }
+    for recipe in recipe_ideas[:2] if isinstance(recipe_ideas, list) else []:
+        if not isinstance(recipe, dict):
+            continue
+        title = _esc(str(recipe.get("title", "Recipe idea")))
+        fit_reason = _esc(str(recipe.get("fit_reason", "Fits the day.")))
+        category = str(recipe.get("category", "cook_at_home"))
+        badge_label = _esc(category_labels.get(category, "Recipe"))
+        source_link = _esc(str(recipe.get("source_link", "#")), quote=True)
+        recipes_html += (
+            '<div style="margin-top:0.65rem;padding:0.7rem 0.8rem;border-radius:12px;'
+            'background:rgba(248,250,252,0.04);border:1px solid rgba(248,250,252,0.08)">'
+            f'<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start">'
+            f'<strong style="color:#e2e8f0;font-size:0.84rem">{title}</strong>'
+            f'<span style="font-size:0.68rem;color:#fb923c;text-transform:uppercase;letter-spacing:0.08em">{badge_label}</span>'
+            f'</div>'
+            f'<div style="margin-top:0.35rem;color:#cbd5e1;font-size:0.8rem;line-height:1.45">{fit_reason}</div>'
+            f'<div style="margin-top:0.4rem"><a href="{source_link}" target="_blank" rel="noopener noreferrer" '
+            'style="color:#fb923c;font-size:0.78rem;text-decoration:underline">View recipe</a></div>'
+            '</div>'
+        )
+
+    rationale_html = (
+        '<details style="margin-top:0.7rem">'
+        '<summary style="cursor:pointer;color:#94a3b8;font-size:0.76rem">Why this baseline fits today</summary>'
+        f'<div style="margin-top:0.45rem;color:#cbd5e1;font-size:0.8rem;line-height:1.5">{_esc(rationale)}</div>'
+        '</details>'
+    ) if rationale else ""
+    recipe_section_html = recipes_html or (
+        '<div style="color:#94a3b8;font-size:0.8rem">No recipe ideas available today.</div>'
+    )
+
+    return (
+        '<div class="panel-card">'
+        '<div class="weather-section-label" style="margin-bottom:0.5rem">Daily Fuel</div>'
+        f'<div style="color:#e2e8f0;font-size:0.86rem;line-height:1.55">'
+        f'Aim for <strong>{calories}</strong> cal, <strong>{protein}g</strong> protein, '
+        f'<strong>{carbs}g</strong> carbs, <strong>{fat}g</strong> fat.'
+        f'</div>'
+        f'<div style="margin-top:0.7rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
+        f'<div class="section-label" style="margin-bottom:0.25rem">Fuel Timing</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5"><strong>Before:</strong> {_esc(pre_workout)}</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>After:</strong> {_esc(post_workout)}</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Hydrate:</strong> {hydration} ml + {sodium} mg sodium</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Strategy:</strong> {_esc(timing)}</div>'
+        '</div>'
+        f'<div style="margin-top:0.7rem;color:#94a3b8;font-size:0.76rem">Confidence: {confidence * 100:.0f}%</div>'
+        f'{rationale_html}'
+        f'<div style="margin-top:0.75rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
+        f'<div class="section-label" style="margin-bottom:0.2rem">Recipe Rotation</div>'
+        f'{recipe_section_html}'
+        '</div>'
+        f'<div style="margin-top:0.7rem;color:#94a3b8;font-size:0.74rem;font-style:italic;line-height:1.45">{_esc(disclaimer)}</div>'
+        '</div>'
+    )
+
+
 @st.cache_data(ttl=3600)
 def _cached_fetch_ai_image_github(
     target_date_iso: str,
@@ -733,6 +815,58 @@ def _cached_fetch_ai_image_github(
     )
     repository = GitHubDataRepository(repo_config)
     return repository.fetch_ai_image(_date.fromisoformat(target_date_iso))
+
+
+@st.cache_data(ttl=3600)
+def _cached_fetch_nutrition_baseline_github(
+    target_date_iso: str,
+    github_token: str,
+    owner: str,
+    repo: str,
+    branch: str,
+    photos_folder_path: str,
+) -> dict[str, Any] | None:
+    from datetime import date as _date
+    from theassembly.github_repo import GitHubDataRepository, GitHubRepoConfig
+
+    repo_config = GitHubRepoConfig(
+        token=github_token,
+        owner=owner,
+        repo=repo,
+        workouts_file_path="workouts.json",
+        current_state_file_path="current_state.json",
+        branch=branch,
+        photos_folder_path=photos_folder_path,
+    )
+    repository = GitHubDataRepository(repo_config)
+    return repository.fetch_nutrition_baseline(_date.fromisoformat(target_date_iso))
+
+
+def _fetch_nutrition_baseline(workout_date_iso: str, config: "AppConfig") -> dict[str, Any]:
+    if config.github_enabled and config.github_token:
+        nutrition = _cached_fetch_nutrition_baseline_github(
+            workout_date_iso,
+            config.github_token,
+            config.workouts_repo_owner,
+            config.workouts_repo_name,
+            config.workouts_repo_branch,
+            config.photos_folder_path,
+        )
+        return nutrition if isinstance(nutrition, dict) else {}
+
+    local_path = (
+        Path(__file__).resolve().parent.parent
+        / "TheAssemblyData"
+        / "nutrition-baselines"
+        / f"{workout_date_iso}.json"
+    )
+    if not local_path.exists():
+        return {}
+    try:
+        parsed = json.loads(local_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _fetch_ai_image_bytes(workout_date_iso: str, config: "AppConfig") -> bytes | None:
@@ -766,6 +900,104 @@ def _fetch_ai_image_bytes(workout_date_iso: str, config: "AppConfig") -> bytes |
     if local_path.exists():
         return local_path.read_bytes()
     return None
+
+
+_GOAL_PROFILES: dict[str, dict[str, float]] = {
+    "strength": {"protein_g_per_lb": 0.9, "protein_share": 0.30, "carb_share": 0.40, "fat_share": 0.30, "hydration_multiplier": 1.0},
+    "hypertrophy": {"protein_g_per_lb": 1.0, "protein_share": 0.30, "carb_share": 0.45, "fat_share": 0.25, "hydration_multiplier": 1.1},
+    "endurance": {"protein_g_per_lb": 0.7, "protein_share": 0.20, "carb_share": 0.60, "fat_share": 0.20, "hydration_multiplier": 1.2},
+    "general": {"protein_g_per_lb": 0.8, "protein_share": 0.25, "carb_share": 0.50, "fat_share": 0.25, "hydration_multiplier": 1.0},
+}
+
+_DIETARY_NOTES: dict[str, str] = {
+    "omnivore": "Keep protein spread across 3-4 meals for smoother recovery.",
+    "vegetarian": "Use dairy, eggs, tofu, tempeh, beans, and lentils to hit the protein target.",
+    "vegan": "Prioritize soy foods, seitan, legumes, and a protein supplement if needed.",
+    "gluten-free": "Center meals on rice, potatoes, oats, fruit, and gluten-free grains for carbs.",
+}
+
+
+def _calculate_personalized_nutrition(
+    nutrition_baseline: dict[str, Any],
+    *,
+    body_weight_lbs: int,
+    primary_goal: str,
+    dietary_preference: str,
+    workout_adjustment_pct: int,
+) -> dict[str, Any]:
+    baseline_calories = int(nutrition_baseline.get("calorie_guidance", 0) or 0)
+    baseline_hydration = int(nutrition_baseline.get("hydration_ml", 0) or 0)
+    profile = _GOAL_PROFILES.get(primary_goal, _GOAL_PROFILES["general"])
+
+    adjusted_calories = max(1200, int(round(baseline_calories * (1 + (workout_adjustment_pct / 100.0)))))
+    calorie_based_protein = int(round((adjusted_calories * profile["protein_share"]) / 4))
+    bodyweight_protein = int(round(body_weight_lbs * profile["protein_g_per_lb"]))
+    protein_g = max(calorie_based_protein, bodyweight_protein)
+
+    remaining_calories = max(0, adjusted_calories - (protein_g * 4))
+    ratio_total = profile["carb_share"] + profile["fat_share"]
+    carb_calories = remaining_calories * (profile["carb_share"] / ratio_total)
+    fat_calories = remaining_calories * (profile["fat_share"] / ratio_total)
+
+    return {
+        "calories": adjusted_calories,
+        "protein_g": protein_g,
+        "carbs_g": int(round(carb_calories / 4)),
+        "fat_g": int(round(fat_calories / 9)),
+        "hydration_ml": int(round(baseline_hydration * profile["hydration_multiplier"])),
+        "dietary_note": _DIETARY_NOTES.get(dietary_preference, _DIETARY_NOTES["omnivore"]),
+        "goal": primary_goal,
+        "adjustment_pct": workout_adjustment_pct,
+        "body_weight_lbs": body_weight_lbs,
+        "dietary_preference": dietary_preference,
+    }
+
+
+def _render_nutrition_calculator(nutrition_baseline: dict[str, Any], workout_date_iso: str) -> None:
+    if not nutrition_baseline:
+        return
+
+    result_key = "_nutrition_calculator_result"
+    date_key = "_nutrition_calculator_date"
+    if st.session_state.get(date_key) not in {None, workout_date_iso}:
+        st.session_state.pop(result_key, None)
+        st.session_state[date_key] = workout_date_iso
+
+    with st.expander("Adjust for Your Goals"):
+        st.caption("Session-only calculator. These adjustments are not saved.")
+        with st.form(f"nutrition-calculator-{workout_date_iso}"):
+            col1, col2 = st.columns(2)
+            body_weight_lbs = int(col1.number_input("Body weight (lbs)", min_value=100, max_value=350, value=180, step=1))
+            primary_goal = col2.selectbox("Primary goal", ["strength", "hypertrophy", "endurance", "general"])
+            dietary_preference = col1.selectbox("Dietary preference", ["omnivore", "vegetarian", "vegan", "gluten-free"])
+            workout_adjustment_pct = int(col2.slider("Workout adjustment", min_value=-20, max_value=20, value=0, step=5, format="%d%%"))
+            submitted = st.form_submit_button("Calculate for Me", width="stretch")
+
+        if submitted:
+            st.session_state[result_key] = _calculate_personalized_nutrition(
+                nutrition_baseline,
+                body_weight_lbs=body_weight_lbs,
+                primary_goal=primary_goal,
+                dietary_preference=dietary_preference,
+                workout_adjustment_pct=workout_adjustment_pct,
+            )
+            st.session_state[date_key] = workout_date_iso
+
+        result = st.session_state.get(result_key)
+        if isinstance(result, dict) and st.session_state.get(date_key) == workout_date_iso:
+            st.markdown("#### Your adjusted targets")
+            metric_cols = st.columns(4)
+            metric_cols[0].metric("Calories", int(result.get("calories", 0)))
+            metric_cols[1].metric("Protein", f"{int(result.get('protein_g', 0))} g")
+            metric_cols[2].metric("Carbs", f"{int(result.get('carbs_g', 0))} g")
+            metric_cols[3].metric("Fat", f"{int(result.get('fat_g', 0))} g")
+            st.caption(
+                f"Hydration target: {int(result.get('hydration_ml', 0))} ml. "
+                f"Goal: {str(result.get('goal', 'general')).title()} | "
+                f"Adjustment: {int(result.get('adjustment_pct', 0)):+d}%"
+            )
+            st.caption(str(result.get("dietary_note", "Today only. Refresh or adjust again tomorrow.")))
+            st.caption("This adjusts your baseline for today only. Refresh or adjust again tomorrow.")
 
 
 def _build_photos_html(photos: list[PhotoRecord]) -> tuple[str, str]:
@@ -913,6 +1145,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
         from datetime import date as _date_today
         weather_date = workout.workout_date.isoformat()
         weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, weather_date, config.app_timezone)
+        nutrition_baseline = _fetch_nutrition_baseline(weather_date, config)
         joke = _cached_fetch_daily_joke()
         photos = _fetch_photos_for_date(_date_today.today().isoformat())
 
@@ -990,6 +1223,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
         col_side = (
             _build_weather_html(weather)
+            + _build_nutrition_html(nutrition_baseline)
             + f'<div class="panel-card" style="margin-top:0.75rem">'
             f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
             f'{_build_joke_html(joke)}'
@@ -1010,6 +1244,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
             f'</div>',
             unsafe_allow_html=True,
         )
+        _render_nutrition_calculator(nutrition_baseline, weather_date)
         if poster_bytes:
             st.markdown(
                 '<div id="wod-poster-anchor"></div>'
@@ -1063,6 +1298,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
 
     # Garage closed — use the same 2-col grid to eliminate desktop whitespace.
     weather = _cached_fetch_weather(config.gym_lat, config.gym_lon, today_iso, config.app_timezone)
+    nutrition_baseline = _fetch_nutrition_baseline(today_iso, config)
     joke = _cached_fetch_daily_joke()
     photos = _fetch_photos_for_date(today_iso)
 
@@ -1084,6 +1320,7 @@ def _render_athlete_view(slate: AthleteSlate, config: AppConfig) -> None:
     closed_photos_html, closed_photos_css = _build_photos_html(photos)
     closed_side = (
         _build_weather_html(weather)
+        + _build_nutrition_html(nutrition_baseline)
         + f'<div class="panel-card" style="margin-top:0.75rem">'
         f'<div class="weather-section-label" style="margin-bottom:0.5rem">😄 Joke of the Day</div>'
         f'{_build_joke_html(joke)}'

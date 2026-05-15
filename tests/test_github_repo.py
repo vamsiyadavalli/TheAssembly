@@ -1,4 +1,5 @@
 import base64
+import json
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
@@ -268,6 +269,73 @@ class TestFetchAiImage(unittest.TestCase):
             data_uri = repo.fetch_ai_image(date(2026, 5, 4))
 
         self.assertIsNone(data_uri)
+
+
+class TestFetchNutritionBaseline(unittest.TestCase):
+    def test_returns_dict_when_inline_content_present(self) -> None:
+        repo = _make_repo()
+        payload = {
+            "calorie_guidance": 2450,
+            "protein_target_g": 180,
+            "recipe_ideas": [],
+        }
+        encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode()
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {"content": encoded}
+
+        with patch("requests.get", return_value=contents_resp):
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertEqual(payload, nutrition)
+
+    def test_falls_back_to_download_url_when_inline_content_missing(self) -> None:
+        repo = _make_repo()
+        payload = {
+            "calorie_guidance": 2300,
+            "protein_target_g": 165,
+            "recipe_ideas": [],
+        }
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {
+            "content": "",
+            "download_url": "https://raw.example.com/2026-05-04.json",
+        }
+
+        download_resp = MagicMock()
+        download_resp.status_code = 200
+        download_resp.content = json.dumps(payload).encode("utf-8")
+
+        with patch("requests.get", side_effect=[contents_resp, download_resp]):
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertEqual(payload, nutrition)
+
+    def test_returns_none_when_missing(self) -> None:
+        repo = _make_repo()
+        not_found = MagicMock()
+        not_found.status_code = 404
+
+        with patch("requests.get", return_value=not_found):
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertIsNone(nutrition)
+
+    def test_returns_none_for_invalid_json(self) -> None:
+        repo = _make_repo()
+        encoded = base64.b64encode(b"not json").decode()
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {"content": encoded}
+
+        with patch("requests.get", return_value=contents_resp):
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertIsNone(nutrition)
 
 
 if __name__ == "__main__":

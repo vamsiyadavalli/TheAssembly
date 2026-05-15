@@ -20,6 +20,7 @@ from .llm_schemas import (
 )
 from .state import PosterState
 from .text_agent import TextAgentError, call_text_agent
+from .recipe_rotation import select_recipes_deterministic
 from .tools import (
     ToolExecutionError,
     generate_coordinate_map,
@@ -499,6 +500,8 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
     intensity = reasoning_plan.get("intensity_profile", "mixed")
     archetype = reasoning_plan.get("workout_archetype", "mixed")
     stimulus = validated_wod.get("stimulus", "General fitness")
+    raw_wod = state.get("raw_wod", {})
+    workout_date = str(raw_wod.get("date") or raw_wod.get("workout_date") or datetime.now(timezone.utc).date().isoformat())
     
     # Build system prompt for nutrition guidance
     system_prompt = (
@@ -520,6 +523,7 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
     
     # Build user prompt with workout context
     user_prompt = (
+        f"Workout date: {workout_date}\n"
         f"Workout: {archetype.upper()} at {intensity.upper()} intensity\n"
         f"Stimulus: {stimulus}\n"
         f"Generate a nutrition baseline recommendation. Be specific on macros, hydration, and meal timing. "
@@ -541,7 +545,8 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
                 temperature=float(state.get("reasoning_temperature", 0.3)),
                 max_output_tokens=int(state.get("reasoning_max_output_tokens", 1200)),
             )
-            nutrition = result.payload
+            nutrition = dict(result.payload)
+            nutrition["recipe_ideas"] = select_recipes_deterministic(workout_date, archetype, intensity)
             llm_meta = {"model": result.model, "usage": result.usage}
             status = "success"
             feedback = ""
