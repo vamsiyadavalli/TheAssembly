@@ -283,6 +283,53 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
     langgraph_trace_level = _setting_from_env_or_secrets("LANGGRAPH_TRACE_LEVEL", default="standard") or "standard"
     langgraph_save_prompts_raw = _setting_from_env_or_secrets("LANGGRAPH_SAVE_INTERMEDIATE_PROMPTS", default="false") or "false"
     langgraph_save_prompts = langgraph_save_prompts_raw.strip().lower() in {"1", "true", "yes", "on"}
+    text_model_default = _setting_from_env_or_secrets("GEMINI_TEXT_MODEL_DEFAULT", default="models/gemini-2.5-flash") or "models/gemini-2.5-flash"
+    reasoning_model = _setting_from_env_or_secrets("LANGGRAPH_REASONING_MODEL", default=text_model_default) or text_model_default
+    designer_model = _setting_from_env_or_secrets("LANGGRAPH_DESIGNER_MODEL", default="models/gemini-2.5-pro") or "models/gemini-2.5-pro"
+    critic_model = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_MODEL", default="models/gemini-2.5-pro") or "models/gemini-2.5-pro"
+    reasoning_schema_version = _setting_from_env_or_secrets("LANGGRAPH_REASONING_SCHEMA_VERSION", default="v1") or "v1"
+    tier2_starter_enabled_raw = _setting_from_env_or_secrets("LANGGRAPH_TIER2_STARTER_ENABLED", default="false") or "false"
+    tier2_starter_enabled = tier2_starter_enabled_raw.strip().lower() in {"1", "true", "yes", "on"}
+    critic_min_score_raw = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_MIN_SCORE", default="70") or "70"
+    critic_enabled_raw = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_ENABLED", default="true") or "true"
+    critic_enabled = critic_enabled_raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    reasoning_temp_raw = _setting_from_env_or_secrets("LANGGRAPH_REASONING_TEMPERATURE", default="0.1") or "0.1"
+    designer_temp_raw = _setting_from_env_or_secrets("LANGGRAPH_DESIGNER_TEMPERATURE", default="0.2") or "0.2"
+    critic_temp_raw = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_TEMPERATURE", default="0.0") or "0.0"
+    reasoning_tokens_raw = _setting_from_env_or_secrets("LANGGRAPH_REASONING_MAX_OUTPUT_TOKENS", default="1200") or "1200"
+    designer_tokens_raw = _setting_from_env_or_secrets("LANGGRAPH_DESIGNER_MAX_OUTPUT_TOKENS", default="1800") or "1800"
+    critic_tokens_raw = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_MAX_OUTPUT_TOKENS", default="1000") or "1000"
+
+    try:
+        reasoning_temp = max(0.0, min(float(reasoning_temp_raw), 1.0))
+    except ValueError:
+        reasoning_temp = 0.1
+    try:
+        designer_temp = max(0.0, min(float(designer_temp_raw), 1.0))
+    except ValueError:
+        designer_temp = 0.2
+    try:
+        critic_temp = max(0.0, min(float(critic_temp_raw), 1.0))
+    except ValueError:
+        critic_temp = 0.0
+
+    try:
+        reasoning_tokens = max(128, int(reasoning_tokens_raw))
+    except ValueError:
+        reasoning_tokens = 1200
+    try:
+        designer_tokens = max(128, int(designer_tokens_raw))
+    except ValueError:
+        designer_tokens = 1800
+    try:
+        critic_tokens = max(128, int(critic_tokens_raw))
+    except ValueError:
+        critic_tokens = 1000
+    try:
+        critic_min_score = max(0, min(100, int(critic_min_score_raw)))
+    except ValueError:
+        critic_min_score = 70
 
     prompt = prompt if prompt is not None else build_image_prompt(workout)
     _validate_prompt_preflight(prompt)
@@ -303,6 +350,19 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
                 api_key=api_key,
                 model=model,
                 aspect_ratio=aspect_ratio,
+                reasoning_model=reasoning_model,
+                designer_model=designer_model,
+                critic_model=critic_model,
+                critic_enabled=critic_enabled,
+                reasoning_temperature=reasoning_temp,
+                designer_temperature=designer_temp,
+                critic_temperature=critic_temp,
+                reasoning_max_output_tokens=reasoning_tokens,
+                designer_max_output_tokens=designer_tokens,
+                critic_max_output_tokens=critic_tokens,
+                reasoning_schema_version=reasoning_schema_version,
+                tier2_starter_enabled=tier2_starter_enabled,
+                critic_min_score=critic_min_score,
                 max_retries_api=max_retries,
                 max_retry_delay_seconds=max_retry_delay_seconds,
                 retry_jitter_ratio=retry_jitter_ratio,

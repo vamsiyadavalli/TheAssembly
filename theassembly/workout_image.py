@@ -438,6 +438,7 @@ def generate_gemini_image(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE", "TEXT"],
+                    temperature=0.1,
                     image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
                 ),
             )
