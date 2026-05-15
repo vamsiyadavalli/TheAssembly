@@ -136,6 +136,32 @@ class GenerateGeminiImageTests(unittest.TestCase):
 
             self.assertTrue(output_path.exists())
 
+    def test_sets_explicit_temperature_in_generate_config(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "output.png"
+            fake_image_bytes = _make_valid_png_bytes()
+
+            modules = _fake_genai_module(fake_image_bytes)
+            with patch.dict(sys.modules, modules):
+                if "theassembly.workout_image" in sys.modules:
+                    del sys.modules["theassembly.workout_image"]
+                from theassembly.workout_image import generate_gemini_image
+
+                generate_gemini_image(
+                    prompt="test prompt",
+                    output_path=output_path,
+                    api_key="test-api-key",
+                    model="gemini-2.5-flash-image",
+                    aspect_ratio="16:9",
+                )
+
+            generate_kwargs = modules["_client_instance"].models.generate_content.call_args.kwargs
+            self.assertIn("config", generate_kwargs)
+            modules["_fake_types"].GenerateContentConfig.assert_called_once()
+            config_kwargs = modules["_fake_types"].GenerateContentConfig.call_args.kwargs
+            self.assertEqual(config_kwargs.get("temperature"), 0.1)
+
     def test_raises_gemini_image_error_when_no_image_part(self) -> None:
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -301,6 +327,7 @@ class RunGeminiModeTests(unittest.TestCase):
                 {
                     "GEMINI_API_KEY": "AIzaSyDUMMY_VALID_LENGTH_KEY",
                     "LANGGRAPH_ENABLED": "true",
+                    "LANGGRAPH_REASONING_SCHEMA_VERSION": "tier1_staged",
                     "LANGGRAPH_VALIDATION_MAX_RETRIES": "4",
                     "LANGGRAPH_TRACE_ENABLED": "true",
                     "LANGGRAPH_TRACE_LEVEL": "verbose",
@@ -330,6 +357,7 @@ class RunGeminiModeTests(unittest.TestCase):
             self.assertEqual(called["trace_enabled"], True)
             self.assertEqual(called["trace_level"], "verbose")
             self.assertEqual(called["save_intermediate_prompts"], True)
+            self.assertEqual(called["reasoning_schema_version"], "tier1_staged")
 
     def test_langgraph_enabled_validation_failure_raises_quality_failed(self) -> None:
         import tempfile

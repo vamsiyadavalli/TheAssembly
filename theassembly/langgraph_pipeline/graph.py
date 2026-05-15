@@ -8,6 +8,7 @@ import uuid
 
 from .nodes import (
     architect_node,
+    critic_node,
     designer_node,
     editor_node,
     generator_node,
@@ -30,7 +31,7 @@ def _write_trace_file(trace: dict[str, Any], output_path: Path) -> Path:
 
 
 def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
-    node_order = ["reasoning", "editor", "architect", "designer", "generator", "validator"]
+    node_order = ["reasoning", "editor", "architect", "designer", "critic", "generator", "validator"]
     node_traces = result.get("node_traces", {}) if isinstance(result.get("node_traces", {}), dict) else {}
     nodes = {name: node_traces.get(name, {}) for name in node_order if node_traces.get(name)}
     return {
@@ -46,7 +47,14 @@ def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
             "trace_level": str(result.get("trace_level", "standard")),
             "save_intermediate_prompts": bool(result.get("save_intermediate_prompts", False)),
             "redact_secrets": bool(result.get("redact_secrets", True)),
-            "model": str(result.get("model", "")),
+            "reasoning_schema_version": str(result.get("reasoning_schema_version", "v1")),
+            "tier2_starter_enabled": bool(result.get("tier2_starter_enabled", False)),
+            "critic_min_score": int(result.get("critic_min_score", 70)),
+            "image_model": str(result.get("image_model", result.get("model", ""))),
+            "reasoning_model": str(result.get("reasoning_model", "")),
+            "designer_model": str(result.get("designer_model", "")),
+            "critic_model": str(result.get("critic_model", "")),
+            "critic_enabled": bool(result.get("critic_enabled", True)),
             "aspect_ratio": str(result.get("aspect_ratio", "")),
         },
         "nodes": nodes,
@@ -72,6 +80,7 @@ def _compile_graph():
     workflow.add_node("editor", editor_node)
     workflow.add_node("architect", architect_node)
     workflow.add_node("designer", designer_node)
+    workflow.add_node("critic", critic_node)
     workflow.add_node("generator", generator_node)
     workflow.add_node("validator", validation_node)
 
@@ -79,7 +88,8 @@ def _compile_graph():
     workflow.add_edge("reasoning", "editor")
     workflow.add_edge("editor", "architect")
     workflow.add_edge("architect", "designer")
-    workflow.add_edge("designer", "generator")
+    workflow.add_edge("designer", "critic")
+    workflow.add_edge("critic", "generator")
     workflow.add_edge("generator", "validator")
 
     workflow.add_conditional_edges(
@@ -102,6 +112,19 @@ def run_poster_pipeline(
     api_key: str,
     model: str,
     aspect_ratio: str,
+    reasoning_model: str = "models/gemini-2.5-flash",
+    designer_model: str = "models/gemini-2.5-pro",
+    critic_model: str = "models/gemini-2.5-pro",
+    critic_enabled: bool = True,
+    reasoning_temperature: float = 0.1,
+    designer_temperature: float = 0.2,
+    critic_temperature: float = 0.0,
+    reasoning_max_output_tokens: int = 1200,
+    designer_max_output_tokens: int = 1800,
+    critic_max_output_tokens: int = 1000,
+    reasoning_schema_version: str = "v1",
+    tier2_starter_enabled: bool = False,
+    critic_min_score: int = 70,
     max_retries_api: int,
     max_retry_delay_seconds: float,
     retry_jitter_ratio: float,
@@ -119,6 +142,20 @@ def run_poster_pipeline(
         "output_path": str(output_path),
         "api_key": api_key,
         "model": model,
+        "image_model": model,
+        "reasoning_model": reasoning_model,
+        "designer_model": designer_model,
+        "critic_model": critic_model,
+        "critic_enabled": critic_enabled,
+        "reasoning_temperature": reasoning_temperature,
+        "designer_temperature": designer_temperature,
+        "critic_temperature": critic_temperature,
+        "reasoning_max_output_tokens": reasoning_max_output_tokens,
+        "designer_max_output_tokens": designer_max_output_tokens,
+        "critic_max_output_tokens": critic_max_output_tokens,
+        "reasoning_schema_version": reasoning_schema_version,
+        "tier2_starter_enabled": tier2_starter_enabled,
+        "critic_min_score": critic_min_score,
         "aspect_ratio": aspect_ratio,
         "max_retries_api": max_retries_api,
         "max_retry_delay_seconds": max_retry_delay_seconds,
@@ -134,6 +171,8 @@ def run_poster_pipeline(
         "run_id": run_id,
         "run_started_at_utc": _utc_now_iso(),
         "node_traces": {},
+        "llm_models": {},
+        "llm_usage": {},
         "retry_history": [],
     }
 
