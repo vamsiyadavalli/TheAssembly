@@ -219,8 +219,12 @@ def _run_prompt_mode(workout, output_path: Path, prompt: str | None = None) -> s
     return prompt
 
 
-def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str, dict[str, object]]:
+def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> tuple[str, str, str, dict[str, object], dict[str, object]]:
     """Generate an AI workout image via Gemini Developer API and save as PNG.
+    
+    Returns:
+        (prompt, model, aspect_ratio, image_metrics, nutrition_baseline)
+        nutrition_baseline is an empty dict if LangGraph is disabled or nutrition fails.
 
     Raises:
         RuntimeError: on API failure, no image returned, or missing API key.
@@ -339,6 +343,8 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
     print(f"[info] Max retries   : {max_retries}")
     print(f"[info] LangGraph     : {'enabled' if langgraph_enabled else 'disabled'}")
 
+    nutrition_baseline: dict[str, object] = {}
+
     if langgraph_enabled:
         try:
             from theassembly.langgraph_pipeline import run_poster_pipeline
@@ -383,6 +389,14 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
             image_metrics["langgraph_validation_passed"] = 1 if pipeline_result.get("is_valid") else 0
             image_metrics["langgraph_feedback"] = str(pipeline_result.get("feedback", ""))
             image_metrics["langgraph_trace_path"] = str(pipeline_result.get("trace_path", ""))
+            
+            # Extract nutrition baseline (non-blocking, may be empty)
+            nutrition_baseline = dict(pipeline_result.get("nutrition_baseline", {}))
+            nutrition_status = str(pipeline_result.get("nutrition_generation_status", "unknown"))
+            nutrition_feedback = str(pipeline_result.get("nutrition_feedback", ""))
+            image_metrics["nutrition_generated"] = bool(nutrition_baseline)
+            image_metrics["nutrition_status"] = nutrition_status
+            image_metrics["nutrition_feedback"] = nutrition_feedback
         except RuntimeError:
             raise
         except Exception as exc:
@@ -410,7 +424,7 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
 
         image_metrics["langgraph_enabled"] = 0
 
-    return prompt, model, aspect_ratio, image_metrics
+    return prompt, model, aspect_ratio, image_metrics, nutrition_baseline
 
 
 def _iter_date_range(start_iso: str, end_iso: str):
@@ -491,6 +505,10 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "langgraph_validation_passed": None,
         "langgraph_feedback": None,
         "langgraph_trace_path": None,
+        "nutrition_generated": None,
+        "nutrition_status": None,
+        "nutrition_path": None,
+        "nutrition_error": None,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -534,10 +552,21 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         })
     elif args.mode == "gemini":
         prompt_for_run: str | None = None
+        nutrition_baseline: dict[str, object] = {}
         try:
-            prompt_for_run, model, aspect_ratio, image_metrics = _run_gemini_mode(workout, output_path)
+            prompt_for_run, model, aspect_ratio, image_metrics, nutrition_baseline = _run_gemini_mode(workout, output_path)
             prompt_path = output_path.with_suffix(".txt")
             prompt_path.write_text(prompt_for_run, encoding="utf-8")
+            
+            # Write nutrition artifact if generated (separate file, completely independent from poster)
+            nutrition_path = None
+            if nutrition_baseline:
+                nutrition_dir = output_dir / "nutrition-baselines"
+                nutrition_dir.mkdir(parents=True, exist_ok=True)
+                nutrition_path = nutrition_dir / f"{date_iso}.json"
+                nutrition_path.write_text(json.dumps(nutrition_baseline, indent=2, sort_keys=True), encoding="utf-8")
+                print(f"[nutrition] Wrote baseline → {nutrition_path}")
+            
             outcome = "gemini"
             metadata.update({
                 "status": "success",
@@ -562,6 +591,9 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 ),
                 "langgraph_feedback": image_metrics.get("langgraph_feedback"),
                 "langgraph_trace_path": image_metrics.get("langgraph_trace_path"),
+                "nutrition_generated": bool(nutrition_baseline),
+                "nutrition_status": image_metrics.get("nutrition_status", "skipped"),
+                "nutrition_path": str(nutrition_path) if nutrition_path else None,
             })
         except RuntimeError as exc:
             error_text = str(exc)

@@ -67,3 +67,9 @@ class PosterState(TypedDict, total=False):
     llm_models: dict[str, str]
     llm_usage: dict[str, dict[str, Any]]
     retry_history: list[dict[str, Any]]
+
+    # Nutrition baseline (derived artifact, workout-scoped, stateless)
+    nutrition_baseline: dict[str, Any]
+    nutrition_generation_status: str
+    nutrition_feedback: str
+    nutrition_artifact_path: str
