@@ -1,0 +1,56 @@
+[
+  {
+    "date": "2026-05-15",
+    "release_time": "06:00",
+    "content": "E2E Fixture Workout — For Time",
+    "stimulus": "Aerobic conditioning with moderate loading",
+    "technical_cues": [
+      "Controlled breathing throughout",
+      "Maintain consistent pacing"
+    ],
+    "status": "scheduled",
+    "movements": [
+      {
+        "name": "Run",
+        "reps": "400m"
+      },
+      {
+        "name": "Thrusters",
+        "reps": "21",
+        "rx_weight": "95 lbs",
+        "scaled_weight": "65 lbs"
+      },
+      {
+        "name": "Pull-ups",
+        "reps": "21"
+      }
+    ]
+  },
+  {
+    "date": "2026-05-14",
+    "release_time": "06:00",
+    "content": "AMRAP 20 — Previous Day",
+    "stimulus": "Pacing and engine work",
+    "technical_cues": [
+      "Smooth transitions between stations"
+    ],
+    "status": "scheduled",
+    "movements": [
+      {
+        "name": "Box Jumps",
+        "reps": "10",
+        "notes": "24/20 in"
+      },
+      {
+        "name": "Kettlebell Swings",
+        "reps": "15",
+        "rx_weight": "53 lbs",
+        "scaled_weight": "35 lbs"
+      },
+      {
+        "name": "Double-Unders",
+        "reps": "30"
+      }
+    ]
+  }
+]

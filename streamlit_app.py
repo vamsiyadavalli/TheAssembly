@@ -768,6 +768,27 @@ def _build_nutrition_html(nutrition_baseline: dict[str, Any]) -> str:
         '<div style="color:#94a3b8;font-size:0.8rem">No recipe ideas available today.</div>'
     )
 
+    fuel_timing_html = (
+        '<details style="margin-top:0.7rem">'
+        '<summary style="cursor:pointer;color:#94a3b8;font-size:0.76rem;font-weight:600">Fuel Timing Details</summary>'
+        '<div style="margin-top:0.45rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5"><strong>Before:</strong> {_esc(pre_workout)}</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>After:</strong> {_esc(post_workout)}</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Hydrate:</strong> {hydration} ml + {sodium} mg sodium</div>'
+        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Strategy:</strong> {_esc(timing)}</div>'
+        '</div>'
+        '</details>'
+    )
+
+    recipe_rotation_html = (
+        '<details style="margin-top:0.75rem">'
+        '<summary style="cursor:pointer;color:#94a3b8;font-size:0.76rem;font-weight:600">Recipe Ideas</summary>'
+        '<div style="margin-top:0.45rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
+        f'{recipe_section_html}'
+        '</div>'
+        '</details>'
+    )
+
     return (
         '<div class="panel-card">'
         '<div class="weather-section-label" style="margin-bottom:0.5rem">Daily Fuel</div>'
@@ -775,19 +796,8 @@ def _build_nutrition_html(nutrition_baseline: dict[str, Any]) -> str:
         f'Aim for <strong>{calories}</strong> cal, <strong>{protein}g</strong> protein, '
         f'<strong>{carbs}g</strong> carbs, <strong>{fat}g</strong> fat.'
         f'</div>'
-        f'<div style="margin-top:0.7rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
-        f'<div class="section-label" style="margin-bottom:0.25rem">Fuel Timing</div>'
-        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5"><strong>Before:</strong> {_esc(pre_workout)}</div>'
-        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>After:</strong> {_esc(post_workout)}</div>'
-        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Hydrate:</strong> {hydration} ml + {sodium} mg sodium</div>'
-        f'<div style="color:#cbd5e1;font-size:0.8rem;line-height:1.5;margin-top:0.35rem"><strong>Strategy:</strong> {_esc(timing)}</div>'
-        '</div>'
-        f'<div style="margin-top:0.7rem;color:#94a3b8;font-size:0.76rem">Confidence: {confidence * 100:.0f}%</div>'
-        f'{rationale_html}'
-        f'<div style="margin-top:0.75rem;border-top:1px solid rgba(248,250,252,0.06);padding-top:0.6rem">'
-        f'<div class="section-label" style="margin-bottom:0.2rem">Recipe Rotation</div>'
-        f'{recipe_section_html}'
-        '</div>'
+        f'{fuel_timing_html}'
+        f'{recipe_rotation_html}'
         f'<div style="margin-top:0.7rem;color:#94a3b8;font-size:0.74rem;font-style:italic;line-height:1.45">{_esc(disclaimer)}</div>'
         '</div>'
     )
@@ -854,19 +864,20 @@ def _fetch_nutrition_baseline(workout_date_iso: str, config: "AppConfig") -> dic
         )
         return nutrition if isinstance(nutrition, dict) else {}
 
-    local_path = (
-        Path(__file__).resolve().parent.parent
-        / "TheAssemblyData"
-        / "nutrition-baselines"
-        / f"{workout_date_iso}.json"
-    )
-    if not local_path.exists():
-        return {}
-    try:
-        parsed = json.loads(local_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    local_base = Path(__file__).resolve().parent.parent / "TheAssemblyData"
+    local_paths = [
+        local_base / "photos" / "ai" / "nutrition-baselines" / f"{workout_date_iso}.json",
+        local_base / "nutrition-baselines" / f"{workout_date_iso}.json",
+    ]
+    for local_path in local_paths:
+        if not local_path.exists():
+            continue
+        try:
+            parsed = json.loads(local_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 def _fetch_ai_image_bytes(workout_date_iso: str, config: "AppConfig") -> bytes | None:

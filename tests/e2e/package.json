@@ -1,0 +1,19 @@
+{
+  "name": "theassembly-e2e",
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for TheAssembly portal",
+  "private": true,
+  "scripts": {
+    "test": "node ./mcp-runner.mjs",
+    "test:open": "node ./mcp-runner.mjs --state=open",
+    "test:closed": "node ./mcp-runner.mjs --state=closed",
+    "test:pw": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3",
+    "@playwright/test": "^1.44.0"
+  }
+}
