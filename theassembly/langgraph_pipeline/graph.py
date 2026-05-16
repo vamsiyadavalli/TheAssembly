@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 from typing import Any
 import uuid
@@ -186,7 +187,19 @@ def run_poster_pipeline(
         "nutrition_artifact_path": "",
     }
 
-    result = graph.invoke(initial_state)
+    # LangGraph's default recursion_limit (25) is too small for this 8-node
+    # graph once validation retries kick in: a full retry pass costs 8 steps,
+    # so max_validation_retries=4 needs ~40 steps. Compute a safe default with
+    # ~25% headroom and allow ops to override via LANGGRAPH_RECURSION_LIMIT.
+    default_recursion_limit = max(50, (max_validation_retries + 1) * 10)
+    recursion_limit_env = os.getenv("LANGGRAPH_RECURSION_LIMIT", "").strip()
+    try:
+        recursion_limit = int(recursion_limit_env) if recursion_limit_env else default_recursion_limit
+    except ValueError:
+        recursion_limit = default_recursion_limit
+    print(f"[info] Recursion limit : {recursion_limit}")
+
+    result = graph.invoke(initial_state, config={"recursion_limit": recursion_limit})
     result_dict = dict(result)
     result_dict["run_finished_at_utc"] = _utc_now_iso()
 
