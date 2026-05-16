@@ -52,15 +52,34 @@ graph TD
     AppCode --> TimeLogic
     CI -->|"reads + validates"| PrivateDataRepo
 
-    subgraph CliTools["🤖 Image Generation CLI (Developer Tool)"]
-        GenerateImageCLI["tools/generate_workout_image.py\n--mode gemini | prompt | poster\n--date · --date-range START:END\n--overwrite · --fallback"]
+    subgraph CliTools["🤖 Image Generation (CLI + LangGraph Pipeline)"]
+        GenerateImageCLI["tools/generate_workout_image.py\n--mode gemini | prompt | poster\n--date · --date-range · --overwrite\nLANGGRAPH_ENABLED env var"]
+        
+        subgraph LGPipeline["LangGraph Orchestration (see architecture-langgraph-pipeline.mmd)"]
+            LGReasoning["reasoning_node<br/>Classify archetype"]
+            LGEditor["editor_node<br/>Validate schema"]
+            LGNutrition["nutrition_node<br/>Macro guidance"]
+            LGDesigner["designer_node<br/>Compose visual"]
+            LGCritic["critic_node<br/>Audit fidelity"]
+            LGGenerator["generator_node<br/>Image generation"]
+            LGValidator["validator_node<br/>OCR + retry loop"]
+        end
+        
+        LGReasoning --> LGEditor
+        LGEditor --> LGNutrition
+        LGNutrition --> LGDesigner
+        LGDesigner --> LGCritic
+        LGCritic --> LGGenerator
+        LGGenerator --> LGValidator
+        LGValidator -.->|"retry with feedback"| LGReasoning
     end
 
     GeminiAPI["✨ Gemini Developer API\ngenerativelanguage.googleapis.com\nSDK: google-genai\nGEMINI_API_KEY + GEMINI_IMAGE_MODEL"]
 
     AppCode -->|"GET photos/ai/:date.png\n(display in athlete view)"| ContentsAPI
     ContentsAPI --> PhotosAI
-    GenerateImageCLI -->|"generate_content\nIMAGE modality"| GeminiAPI
-    GeminiAPI -->|"PNG bytes"| GenerateImageCLI
-    GenerateImageCLI -->|"writes png + meta.json\nvia local file system"| PhotosAI
+    GenerateImageCLI --> LGPipeline
+    LGPipeline -->|"generate_content\nIMAGE modality\n(when enabled)"| GeminiAPI
+    GeminiAPI -->|"PNG bytes"| LGValidator
+    LGValidator -->|"writes png + meta.json\nvia stdout/file"| PhotosAI
 

@@ -1,14 +1,34 @@
-# Multi-Agent LangGraph Pipeline - Implementation Complete ✅
+# Multi-Agent LangGraph Pipeline - Implementation Status
 
-**Date:** May 13, 2026  
-**Status:** Production Ready  
+**Date:** May 15, 2026  
+**Status:** MVP Production (Core nodes ready, architect node planned Phase 3)  
 **Test Coverage:** 32/32 passing ✓
+
+---
+
+## ⚠️ Implementation Notes (May 15, 2026 Update)
+
+**Current Reality vs. Documentation:**
+
+The ASCII diagram below shows the **PLANNED** full architecture. The **CURRENT** implementation has:
+
+```
+CURRENT (May 15, 2026):
+reasoning → editor → [nutrition_baseline] → designer → critic → generator → validator
+
+PLANNED (Phase 3 Upgrade):
+reasoning → editor → [architect] → designer → critic → generator → validator
+```
+
+The `architect_node` code exists as `generate_coordinate_map()` in tools.py (lines 55-200) but is **not yet wired into the graph**. Phase 3 will move layout computation into a dedicated node in the orchestration flow. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for status tracking.
+
+Currently, the nutrition node (non-blocking, independent artifact) occupies this position. When architect is activated, nutrition will run in parallel.
 
 ---
 
 ## Architecture Overview
 
-The workout poster generation pipeline now uses **7-node LangGraph orchestration** with **3 specialized LLM agents**:
+The workout poster generation pipeline uses **7-node LangGraph orchestration** with **3 specialized LLM agents** (in current implementation):
 
 ```
 raw_wod
@@ -20,8 +40,9 @@ raw_wod
 [editor_node]
   Schema validation, canonical rows, semantic contract
   ↓
-[architect_node]
-  Layout coordinates, panel budgets, overflow risks
+[nutrition_baseline_node] ← CURRENT (non-blocking artifact)
+  Daily macro guidance + recipe rotation
+  (Phase 3: will be replaced by [architect_node] in main flow)
   ↓
 [designer_node] ← LLM Agent #2
   Visual composition with compliance checklist
@@ -135,11 +156,20 @@ call_text_agent(
 - Creates semantic contract (immutable truth block)
 - Enforces row contiguity and section constraints
 
-#### architect_node
-- Deterministic layout computation
-- Reserves space for finisher sections
-- Generates panel budgets and overflow risk hints
-- Updates state: `layout_coordinates`, `panel_budgets`, `overflow_risks`
+#### nutrition_baseline_node (CURRENT — Non-blocking)
+- Invokes text LLM for daily macro guidance
+- Independent artifact (generated in parallel, doesn't block pipeline)
+- Generates recipe rotation suggestions
+- Falls back if API unavailable
+- Updates state: `nutrition_baseline`, `nutrition_status`, `recipes_suggested`
+
+#### architect_node (PLANNED — Phase 3)
+- Will perform deterministic layout computation
+- Will reserve space for finisher sections
+- Will generate panel budgets and overflow risk hints
+- Will be wired between editor and designer
+- Will update state: `layout_coordinates`, `panel_budgets`, `overflow_risks`
+- **Current Status**: Function `generate_coordinate_map()` exists in tools.py but not called from graph
 
 #### designer_node
 - Invokes text LLM with DesignerPromptSchema
