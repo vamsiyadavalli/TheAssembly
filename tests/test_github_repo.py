@@ -290,6 +290,51 @@ class TestFetchNutritionBaseline(unittest.TestCase):
 
         self.assertEqual(payload, nutrition)
 
+    def test_prefers_photos_ai_nutrition_path(self) -> None:
+        repo = _make_repo()
+        payload = {
+            "calorie_guidance": 2450,
+            "protein_target_g": 180,
+            "recipe_ideas": [],
+        }
+        encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode()
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.json.return_value = {"content": encoded}
+
+        with patch("requests.get", return_value=contents_resp) as mock_get:
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertEqual(payload, nutrition)
+        first_url = mock_get.call_args_list[0].args[0]
+        self.assertIn("photos/ai/nutrition-baselines/2026-05-04.json", str(first_url))
+
+    def test_falls_back_to_legacy_root_nutrition_path(self) -> None:
+        repo = _make_repo()
+        payload = {
+            "calorie_guidance": 2300,
+            "protein_target_g": 165,
+            "recipe_ideas": [],
+        }
+        encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode()
+
+        primary_not_found = MagicMock()
+        primary_not_found.status_code = 404
+
+        legacy_resp = MagicMock()
+        legacy_resp.status_code = 200
+        legacy_resp.json.return_value = {"content": encoded}
+
+        with patch("requests.get", side_effect=[primary_not_found, legacy_resp]) as mock_get:
+            nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
+
+        self.assertEqual(payload, nutrition)
+        first_url = mock_get.call_args_list[0].args[0]
+        second_url = mock_get.call_args_list[1].args[0]
+        self.assertIn("photos/ai/nutrition-baselines/2026-05-04.json", str(first_url))
+        self.assertIn("nutrition-baselines/2026-05-04.json", str(second_url))
+
     def test_falls_back_to_download_url_when_inline_content_missing(self) -> None:
         repo = _make_repo()
         payload = {
@@ -319,7 +364,7 @@ class TestFetchNutritionBaseline(unittest.TestCase):
         not_found = MagicMock()
         not_found.status_code = 404
 
-        with patch("requests.get", return_value=not_found):
+        with patch("requests.get", side_effect=[not_found, not_found]):
             nutrition = repo.fetch_nutrition_baseline(date(2026, 5, 4))
 
         self.assertIsNone(nutrition)

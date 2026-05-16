@@ -854,19 +854,20 @@ def _fetch_nutrition_baseline(workout_date_iso: str, config: "AppConfig") -> dic
         )
         return nutrition if isinstance(nutrition, dict) else {}
 
-    local_path = (
-        Path(__file__).resolve().parent.parent
-        / "TheAssemblyData"
-        / "nutrition-baselines"
-        / f"{workout_date_iso}.json"
-    )
-    if not local_path.exists():
-        return {}
-    try:
-        parsed = json.loads(local_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    local_base = Path(__file__).resolve().parent.parent / "TheAssemblyData"
+    local_paths = [
+        local_base / "photos" / "ai" / "nutrition-baselines" / f"{workout_date_iso}.json",
+        local_base / "nutrition-baselines" / f"{workout_date_iso}.json",
+    ]
+    for local_path in local_paths:
+        if not local_path.exists():
+            continue
+        try:
+            parsed = json.loads(local_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 def _fetch_ai_image_bytes(workout_date_iso: str, config: "AppConfig") -> bytes | None:
