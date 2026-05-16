@@ -132,6 +132,26 @@ def _semantic_contract(rows: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _semantic_anchor_block(rows: list[dict[str, str]]) -> str:
+    lines = [
+        "---",
+        "IMMUTABLE OCR ANCHORS (verbatim tokens required):",
+        "- Keep all movement and weight tokens exactly as written below.",
+        "- Do not paraphrase, abbreviate, or merge these anchors.",
+        "ANCHOR_ROWS:",
+    ]
+    for idx, row in enumerate(rows, start=1):
+        reps = row.get("reps", "")
+        name = row.get("name", "")
+        combined = f"{reps} {name}".strip()
+        if combined:
+            lines.append(f"{idx}. {combined}")
+        weight = row.get("rx_weight", "")
+        if weight:
+            lines.append(f"{idx}. WEIGHT: {weight}")
+    return "\n".join(lines)
+
+
 def _heuristic_reasoning(raw: dict[str, Any], feedback: str) -> dict[str, Any]:
     movements = raw.get("movements", []) if isinstance(raw, dict) else []
     content = str(raw.get("content", ""))
@@ -327,18 +347,39 @@ def reasoning_node(state: PosterState) -> PosterState:
     started_mono = time.monotonic()
     raw = state.get("raw_wod", {})
     feedback = str(state.get("feedback", "")).strip()
+    retry_directives = state.get("retry_directives", [])
+    last_validation = state.get("last_validation_feedback", {})
     save_prompts = bool(state.get("save_intermediate_prompts", False))
 
     system_prompt = (
         "You are ReasoningAgent for workout poster planning. "
         "Use only the provided workout data and return valid JSON. "
-        "Never invent, reorder, or mutate workout facts."
+        "Never invent, reorder, or mutate workout facts. "
+        "If retry directives are provided, incorporate them into your planning decisions."
     )
+    
+    # Build retry directives context
+    directives_context = ""
+    if retry_directives:
+        directive_lines = ["RETRY_DIRECTIVES (from prior validation failures):"]
+        for directive in retry_directives:
+            directive_lines.append(f"  * {directive.get('category', 'unknown')}: {directive.get('focus', '')}")
+            if directive.get("affected_items"):
+                directive_lines.append(f"    Affected: {directive['affected_items']}")
+        directives_context = "\n".join(directive_lines)
+    
     user_prompt = (
         f"WORKOUT_JSON:\n{raw}\n\n"
         f"RETRY_FEEDBACK:\n{feedback or 'none'}\n\n"
-        "Return a planning object that optimizes readability and factual fidelity."
     )
+    
+    if directives_context:
+        user_prompt += f"{directives_context}\n\n"
+    
+    if last_validation:
+        user_prompt += f"LAST_VALIDATION:\n  Similarity Score: {last_validation.get('similarity_score', 0.0)}\n  Timestamp: {last_validation.get('timestamp_utc', '')}\n\n"
+    
+    user_prompt += "Return a planning object that optimizes readability and factual fidelity. Prioritize addressing the above directives."
 
     plan: dict[str, Any]
     llm_warnings: list[str] = []
@@ -383,6 +424,8 @@ def reasoning_node(state: PosterState) -> PosterState:
         "layout_strategy": plan.get("layout_strategy", "masonry_2col"),
         "finisher_split_required": plan.get("finisher_strategy", "none") != "none",
         "retry_feedback_applied": bool(feedback),
+        "retry_directives_applied": len(retry_directives) > 0,
+        "retry_directives_count": len(retry_directives),
         "llm_used": bool(llm_meta["model"]),
         "reasoning_schema_version": schema_version,
         "staged_mode": schema_version == "tier1_staged",
@@ -485,6 +528,85 @@ def editor_node(state: PosterState) -> PosterState:
     return update
 
 
+def _fallback_nutrition_baseline(
+    *,
+    workout_date: str,
+    archetype: str,
+    intensity: str,
+    stimulus: str,
+) -> dict[str, Any]:
+    training_day_map = {
+        "high": "high_intensity",
+        "moderate": "moderate_intensity",
+        "low": "low_intensity",
+        "mixed": "mixed",
+    }
+    calorie_map = {
+        "high": 2900,
+        "moderate": 2600,
+        "low": 2300,
+        "mixed": 2500,
+    }
+    protein_map = {
+        "high": 180,
+        "moderate": 165,
+        "low": 150,
+        "mixed": 160,
+    }
+    carbs_map = {
+        "high": 340,
+        "moderate": 290,
+        "low": 210,
+        "mixed": 260,
+    }
+    fat_map = {
+        "high": 85,
+        "moderate": 80,
+        "low": 75,
+        "mixed": 78,
+    }
+    hydration_map = {
+        "high": 3800,
+        "moderate": 3400,
+        "low": 3000,
+        "mixed": 3300,
+    }
+    sodium_map = {
+        "high": 1400,
+        "moderate": 1200,
+        "low": 950,
+        "mixed": 1100,
+    }
+
+    normalized_intensity = str(intensity or "mixed").strip().lower()
+    if normalized_intensity not in calorie_map:
+        normalized_intensity = "mixed"
+
+    recipes = select_recipes_deterministic(workout_date, archetype, normalized_intensity)
+    return {
+        "training_day_type": training_day_map[normalized_intensity],
+        "calorie_guidance": calorie_map[normalized_intensity],
+        "protein_target_g": protein_map[normalized_intensity],
+        "carbs_target_g": carbs_map[normalized_intensity],
+        "fat_target_g": fat_map[normalized_intensity],
+        "pre_workout_fuel": "Carb-forward snack 60-90 minutes pre-session with light protein.",
+        "post_workout_fuel": "Protein plus carbs within 60 minutes after training for recovery.",
+        "hydration_ml": hydration_map[normalized_intensity],
+        "electrolytes_mg_sodium": sodium_map[normalized_intensity],
+        "meal_timing_strategy": (
+            "Distribute meals every 3-4 hours and bias carbohydrates around training windows. "
+            "Keep protein evenly spread across meals."
+        ),
+        "rationale": (
+            "Deterministic fallback baseline generated because the nutrition LLM output was not parseable. "
+            f"Workout archetype={archetype}, intensity={normalized_intensity}, stimulus={stimulus}."
+        ),
+        "disclaimer": "Consult a registered dietitian for personalized advice.",
+        "recipe_ideas": recipes,
+        "confidence": 0.55,
+    }
+
+
 def nutrition_baseline_node(state: PosterState) -> PosterState:
     """Generate a stateless daily nutrition baseline from workout intensity and stimulus.
     
@@ -532,13 +654,15 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
     
     llm_meta = {"model": "", "usage": {}}
     llm_warnings: list[str] = []
-    
+
+    nutrition_model = str(state.get("nutrition_model") or state.get("reasoning_model") or "")
+
     # Call LLM if available
-    if state.get("api_key") and state.get("reasoning_model"):
+    if state.get("api_key") and nutrition_model:
         try:
             result = call_text_agent(
                 api_key=str(state["api_key"]),
-                model=str(state["reasoning_model"]),
+                model=nutrition_model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 response_model=NutritionBaselineModel,
@@ -552,19 +676,50 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
             feedback = ""
         except TextAgentError as exc:
             llm_warnings = [str(exc)]
-            nutrition = {}
-            status = "failed"
-            feedback = str(exc)
+            try:
+                recovery_result = call_text_agent(
+                    api_key=str(state["api_key"]),
+                    model=nutrition_model,
+                    system_prompt=(
+                        system_prompt
+                        + " Return strictly valid JSON. No prose, no markdown, no trailing comments."
+                    ),
+                    user_prompt=user_prompt,
+                    response_model=NutritionBaselineModel,
+                    temperature=0.0,
+                    max_output_tokens=int(state.get("reasoning_max_output_tokens", 1200)),
+                )
+                nutrition = dict(recovery_result.payload)
+                nutrition["recipe_ideas"] = select_recipes_deterministic(workout_date, archetype, intensity)
+                llm_meta = {"model": recovery_result.model, "usage": recovery_result.usage}
+                status = "recovered"
+                feedback = "Recovered after initial JSON parse failure"
+            except TextAgentError as recovery_exc:
+                llm_warnings.append(str(recovery_exc))
+                nutrition = _fallback_nutrition_baseline(
+                    workout_date=workout_date,
+                    archetype=archetype,
+                    intensity=intensity,
+                    stimulus=str(stimulus),
+                )
+                status = "fallback"
+                feedback = str(recovery_exc)
     else:
-        # Fallback if no API key: return minimal valid baseline (non-blocking failure)
-        nutrition = {}
-        status = "skipped"
-        feedback = "No API key or reasoning model configured for nutrition"
+        # Fallback if no API/model: deterministic baseline to keep downstream artifacts stable
+        nutrition = _fallback_nutrition_baseline(
+            workout_date=workout_date,
+            archetype=archetype,
+            intensity=intensity,
+            stimulus=str(stimulus),
+        )
+        status = "fallback"
+        feedback = "No API key or nutrition model configured for nutrition"
     
     decision = {
         "training_day_type": training_day_type,
         "archetype": archetype,
         "intensity": intensity,
+        "model": nutrition_model,
         "llm_used": bool(llm_meta["model"]),
         "status": status,
         "has_recipe_ideas": len(nutrition.get("recipe_ideas", [])) == 2 if nutrition else False,
@@ -594,10 +749,17 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
     return update
 
 
-
+def architect_node(state: PosterState) -> PosterState:
+    """Generate layout coordinates, panel budgets, and overflow risk assessment.
+    
+    Deterministic node: computes spatial mapping for all visual elements on a 1024x1024 canvas.
+    Input: validated_wod from editor node
+    Output: layout_coordinates, panel_budgets, overflow_risks
+    """
     started_at = _utc_now_iso()
     started_mono = time.monotonic()
     validated = state.get("validated_wod")
+    
     if not validated:
         err = "architect received empty validated_wod"
         trace = _build_node_trace(
@@ -618,10 +780,11 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
         update: PosterState = {
             "is_valid": False,
             "feedback": err,
-            "error_log": [*state.get("error_log", []), "architect: missing validated_wod"],
+            "error_log": [*state.get("error_log", []), f"architect: {err}"],
         }
         update.update(_with_node_trace(state, "architect", trace))
         return update
+    
     try:
         coordinates = generate_coordinate_map(validated)
     except ToolExecutionError as exc:
@@ -640,7 +803,7 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
             tools=[{"name": "generate_coordinate_map", "status": "failed", "duration_ms": 0, "error": str(exc)}],
             errors=[str(exc)],
         )
-        update = {
+        update: PosterState = {
             "is_valid": False,
             "feedback": str(exc),
             "error_log": [*state.get("error_log", []), f"architect: {exc}"],
@@ -658,6 +821,7 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
 
     zones = coordinates.get("zones", {})
     sidebar = zones.get("sidebar") if isinstance(zones, dict) else None
+    
     trace = _build_node_trace(
         node_name="architect",
         attempt=int(state.get("retry_count", 0)) + 1,
@@ -681,7 +845,8 @@ def nutrition_baseline_node(state: PosterState) -> PosterState:
         tools=[{"name": "generate_coordinate_map", "status": "success", "duration_ms": 0, "error": ""}],
         output_ref={"layout_coordinates_sha256": _sha256_text(str(coordinates))},
     )
-    update = {
+    
+    update: PosterState = {
         "layout_coordinates": coordinates,
         "panel_budgets": panel_budgets,
         "overflow_risks": overflow_risks,
@@ -756,6 +921,8 @@ def designer_node(state: PosterState) -> PosterState:
     layout = state.get("layout_coordinates", {})
     strategy = state.get("strategic_intent", "")
     semantic_contract = str(state.get("semantic_contract", ""))
+    canonical_rows = list(state.get("canonical_rows", []))
+    semantic_anchors = _semantic_anchor_block(canonical_rows)
 
     system_prompt = (
         "You are DesignerAgent for professional fitness posters. "
@@ -831,6 +998,7 @@ def designer_node(state: PosterState) -> PosterState:
         }
 
     candidate_prompt = _assemble_prompt_from_designer(designer_draft, base_prompt)
+    candidate_prompt = f"{candidate_prompt}\n\n{semantic_anchors}\n"
 
     trace = _build_node_trace(
         node_name="designer",
@@ -843,6 +1011,7 @@ def designer_node(state: PosterState) -> PosterState:
             "palette": {"accent_hex": assets.get("palette", {}).get("accent", "")},
             "lighting_profile": assets.get("lighting", ""),
             "negative_prompt_applied": True,
+            "semantic_anchor_count": len(canonical_rows),
             "final_prompt_char_count": len(candidate_prompt),
             "final_prompt_sha256": _sha256_text(candidate_prompt),
             "llm_used": bool(llm_meta["model"]),
@@ -1239,6 +1408,70 @@ def validation_node(state: PosterState) -> PosterState:
     similarity_score = float(audit.get("similarity_score", 0.0))
     retry_requested = not is_valid
     retry_reason = f"validation mismatches: {mismatches}" if retry_requested else ""
+    
+    # Generate structured retry directives if validation failed
+    retry_directives = []
+    if retry_requested:
+        # Analyze types of mismatches to provide actionable directives
+        mismatch_categories = {
+            "movement_names": [],
+            "rep_counts": [],
+            "weights": [],
+            "layout_issues": [],
+        }
+        
+        for mismatch in mismatches:
+            mismatch_lower = str(mismatch).lower()
+            if any(term in mismatch_lower for term in ["movement", "name", "exercise"]):
+                mismatch_categories["movement_names"].append(mismatch)
+            elif any(term in mismatch_lower for term in ["reps", "rep ", "count", "rounds"]):
+                mismatch_categories["rep_counts"].append(mismatch)
+            elif any(term in mismatch_lower for term in ["weight", "lbs", "kg", "load", "rx"]):
+                mismatch_categories["weights"].append(mismatch)
+            else:
+                mismatch_categories["layout_issues"].append(mismatch)
+        
+        # Create directives based on what failed
+        if mismatch_categories["movement_names"]:
+            retry_directives.append({
+                "category": "movement_accuracy",
+                "priority": "high",
+                "focus": "Ensure all movement names match semantic contract exactly; check for OCR misreads of text",
+                "affected_items": mismatch_categories["movement_names"],
+            })
+        
+        if mismatch_categories["rep_counts"]:
+            retry_directives.append({
+                "category": "rep_accuracy",
+                "priority": "high",
+                "focus": "Verify rep counts are rendered clearly; check for OCR number confusion (0/O, 1/I, 5/S)",
+                "affected_items": mismatch_categories["rep_counts"],
+            })
+        
+        if mismatch_categories["weights"]:
+            retry_directives.append({
+                "category": "weight_accuracy",
+                "priority": "high",
+                "focus": "Ensure RX weights are legible; check typography contrast and font selection",
+                "affected_items": mismatch_categories["weights"],
+            })
+        
+        if mismatch_categories["layout_issues"]:
+            retry_directives.append({
+                "category": "layout_clarity",
+                "priority": "medium",
+                "focus": "Improve spatial arrangement to reduce text overlap and improve readability",
+                "affected_items": mismatch_categories["layout_issues"],
+            })
+        
+        # Add a general directive if too many failures
+        if len(mismatches) > expected_tokens_count * 0.5:
+            retry_directives.append({
+                "category": "strategy_pivot",
+                "priority": "critical",
+                "focus": f"Over 50% mismatch rate ({len(mismatches)}/{expected_tokens_count}); consider alternative layout strategy or typography",
+                "affected_items": [],
+            })
 
     trace = _build_node_trace(
         node_name="validator",
@@ -1256,6 +1489,7 @@ def validation_node(state: PosterState) -> PosterState:
             "is_valid": is_valid,
             "retry_requested": retry_requested,
             "retry_reason": retry_reason,
+            "retry_directives_count": len(retry_directives),
         },
         prompt=_prompt_trace(
             system_prompt="ValidatorNode: verify OCR text against expected workout tokens",
@@ -1271,9 +1505,16 @@ def validation_node(state: PosterState) -> PosterState:
         "is_valid": is_valid,
         "feedback": "" if is_valid else retry_reason,
         "retry_count": state.get("retry_count", 0) if is_valid else state.get("retry_count", 0) + 1,
+        "retry_directives": retry_directives,
+        "last_validation_feedback": {
+            "mismatches": mismatches,
+            "similarity_score": similarity_score,
+            "directives": retry_directives,
+            "timestamp_utc": _utc_now_iso(),
+        },
     }
     if retry_requested:
-        history = [*state.get("retry_history", []), {"attempt": int(state.get("retry_count", 0)) + 1, "reason": retry_reason, "timestamp_utc": _utc_now_iso()}]
+        history = [*state.get("retry_history", []), {"attempt": int(state.get("retry_count", 0)) + 1, "reason": retry_reason, "directives": retry_directives, "timestamp_utc": _utc_now_iso()}]
         update["retry_history"] = history
     update.update(_with_node_trace(state, "validator", trace))
     return update

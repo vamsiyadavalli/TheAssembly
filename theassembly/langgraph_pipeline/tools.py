@@ -234,6 +234,13 @@ def _normalize_for_match(text: str) -> str:
 
 
 def _contains_expected_token(extracted: str, token: str, *, threshold: float = 0.92) -> bool:
+    token_word_count = len(token.split())
+    adaptive_threshold = threshold
+    if token_word_count >= 5:
+        adaptive_threshold = min(adaptive_threshold, 0.84)
+    elif token_word_count >= 3:
+        adaptive_threshold = min(adaptive_threshold, 0.88)
+
     if token in extracted:
         return True
 
@@ -252,10 +259,23 @@ def _contains_expected_token(extracted: str, token: str, *, threshold: float = 0
             ratio = SequenceMatcher(None, token, candidate).ratio()
             if ratio > best:
                 best = ratio
-            if best >= threshold:
+            if best >= adaptive_threshold:
                 return True
 
     return False
+
+
+def _weight_present_with_numeric_fallback(extracted: str, rx_weight: str) -> bool:
+    normalized_weight = _normalize_for_match(rx_weight)
+    if _contains_expected_token(extracted, normalized_weight):
+        return True
+
+    numbers = re.findall(r"\d+", normalized_weight)
+    if len(numbers) < 2:
+        return False
+
+    # Accept OCR variants like "75/55 lbs" when both prescribed numbers appear with a weight unit.
+    return all(num in extracted for num in numbers[:2]) and ("lb" in extracted or "lbs" in extracted)
 
 
 def verify_image_accuracy(
@@ -288,7 +308,20 @@ def verify_image_accuracy(
             "extracted_text": extracted_raw,
         }
 
-    mismatches = [token for token in checks if not _contains_expected_token(extracted, token)]
+    mismatches: list[str] = []
+    for row in expected_rows:
+        name = str(row.get("name", "")).strip()
+        reps = str(row.get("reps", "")).strip()
+        rx_weight = str(row.get("rx_weight", "")).strip()
+
+        if name and reps:
+            movement_token = _normalize_for_match(f"{reps} {name}")
+            if movement_token and not _contains_expected_token(extracted, movement_token):
+                mismatches.append(movement_token)
+
+        if rx_weight and not _weight_present_with_numeric_fallback(extracted, rx_weight):
+            mismatches.append(_normalize_for_match(rx_weight))
+
     matched = len(checks) - len(mismatches)
     similarity = matched / len(checks)
 

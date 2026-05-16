@@ -50,6 +50,14 @@ _DEFAULT_OUTPUT_DIR = str(_DATA_ROOT / "photos" / "ai")
 _TIMEZONE = "America/New_York"
 
 
+class LangGraphQualityError(RuntimeError):
+    """Structured quality failure carrying LangGraph and nutrition context."""
+
+    def __init__(self, message: str, *, context: dict[str, object] | None = None) -> None:
+        super().__init__(message)
+        self.context = context or {}
+
+
 def _validate_api_key_format(api_key: str) -> None:
     """Perform a lightweight API key sanity check before network requests."""
     candidate = api_key.strip()
@@ -289,6 +297,7 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
     langgraph_save_prompts = langgraph_save_prompts_raw.strip().lower() in {"1", "true", "yes", "on"}
     text_model_default = _setting_from_env_or_secrets("GEMINI_TEXT_MODEL_DEFAULT", default="models/gemini-2.5-flash") or "models/gemini-2.5-flash"
     reasoning_model = _setting_from_env_or_secrets("LANGGRAPH_REASONING_MODEL", default=text_model_default) or text_model_default
+    nutrition_model = _setting_from_env_or_secrets("LANGGRAPH_NUTRITION_MODEL", default=reasoning_model) or reasoning_model
     designer_model = _setting_from_env_or_secrets("LANGGRAPH_DESIGNER_MODEL", default="models/gemini-2.5-pro") or "models/gemini-2.5-pro"
     critic_model = _setting_from_env_or_secrets("LANGGRAPH_CRITIC_MODEL", default="models/gemini-2.5-pro") or "models/gemini-2.5-pro"
     reasoning_schema_version = _setting_from_env_or_secrets("LANGGRAPH_REASONING_SCHEMA_VERSION", default="v1") or "v1"
@@ -357,6 +366,7 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
                 model=model,
                 aspect_ratio=aspect_ratio,
                 reasoning_model=reasoning_model,
+                nutrition_model=nutrition_model,
                 designer_model=designer_model,
                 critic_model=critic_model,
                 critic_enabled=critic_enabled,
@@ -377,9 +387,27 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
                 trace_level=langgraph_trace_level,
                 save_intermediate_prompts=langgraph_save_prompts,
             )
+            nutrition_baseline = dict(pipeline_result.get("nutrition_baseline", {}))
+            nutrition_status = str(pipeline_result.get("nutrition_generation_status", "unknown"))
+            nutrition_feedback = str(pipeline_result.get("nutrition_feedback", ""))
+            langgraph_context = {
+                "langgraph_enabled": 1,
+                "langgraph_retry_count": int(pipeline_result.get("retry_count", 0)),
+                "langgraph_similarity_score": float(pipeline_result.get("similarity_score", 0.0)),
+                "langgraph_validation_passed": 1 if pipeline_result.get("is_valid") else 0,
+                "langgraph_feedback": str(pipeline_result.get("feedback", "")),
+                "langgraph_trace_path": str(pipeline_result.get("trace_path", "")),
+                "nutrition_generated": bool(nutrition_baseline),
+                "nutrition_status": nutrition_status,
+                "nutrition_feedback": nutrition_feedback,
+                "nutrition_baseline": nutrition_baseline,
+            }
             if not pipeline_result.get("is_valid", False):
                 feedback = str(pipeline_result.get("feedback", "unknown validation error"))
-                raise RuntimeError(f"[quality_failed] LangGraph validation failed: {feedback}")
+                raise LangGraphQualityError(
+                    f"[quality_failed] LangGraph validation failed: {feedback}",
+                    context=langgraph_context,
+                )
 
             prompt = str(pipeline_result.get("final_graphic_prompt") or prompt)
             image_metrics = dict(pipeline_result.get("image_metrics") or {})
@@ -391,9 +419,6 @@ def _run_gemini_mode(workout, output_path: Path, prompt: str | None = None) -> t
             image_metrics["langgraph_trace_path"] = str(pipeline_result.get("trace_path", ""))
             
             # Extract nutrition baseline (non-blocking, may be empty)
-            nutrition_baseline = dict(pipeline_result.get("nutrition_baseline", {}))
-            nutrition_status = str(pipeline_result.get("nutrition_generation_status", "unknown"))
-            nutrition_feedback = str(pipeline_result.get("nutrition_feedback", ""))
             image_metrics["nutrition_generated"] = bool(nutrition_baseline)
             image_metrics["nutrition_status"] = nutrition_status
             image_metrics["nutrition_feedback"] = nutrition_feedback
@@ -472,6 +497,17 @@ def _write_metadata(meta_path: Path, payload: dict[str, object]) -> None:
     meta_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _write_nutrition_artifact(output_dir: Path, date_iso: str, nutrition_baseline: dict[str, object]) -> Path | None:
+    if not nutrition_baseline:
+        return None
+
+    nutrition_dir = output_dir / "nutrition-baselines"
+    nutrition_dir.mkdir(parents=True, exist_ok=True)
+    nutrition_path = nutrition_dir / f"{date_iso}.json"
+    nutrition_path.write_text(json.dumps(nutrition_baseline, indent=2, sort_keys=True), encoding="utf-8")
+    return nutrition_path
+
+
 def _process_date(target_date: date, args: argparse.Namespace, all_records: list) -> tuple[int, str]:
     """Process a single date. Returns (exit_code, outcome_label)."""
     date_iso = target_date.isoformat()
@@ -509,6 +545,7 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
         "nutrition_status": None,
         "nutrition_path": None,
         "nutrition_error": None,
+        "diagnostics_summary": None,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -559,12 +596,8 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
             prompt_path.write_text(prompt_for_run, encoding="utf-8")
             
             # Write nutrition artifact if generated (separate file, completely independent from poster)
-            nutrition_path = None
-            if nutrition_baseline:
-                nutrition_dir = output_dir / "nutrition-baselines"
-                nutrition_dir.mkdir(parents=True, exist_ok=True)
-                nutrition_path = nutrition_dir / f"{date_iso}.json"
-                nutrition_path.write_text(json.dumps(nutrition_baseline, indent=2, sort_keys=True), encoding="utf-8")
+            nutrition_path = _write_nutrition_artifact(output_dir, date_iso, nutrition_baseline)
+            if nutrition_path:
                 print(f"[nutrition] Wrote baseline → {nutrition_path}")
             
             outcome = "gemini"
@@ -594,10 +627,20 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "nutrition_generated": bool(nutrition_baseline),
                 "nutrition_status": image_metrics.get("nutrition_status", "skipped"),
                 "nutrition_path": str(nutrition_path) if nutrition_path else None,
+                "diagnostics_summary": (
+                    f"gemini_success; validation_passed=true; "
+                    f"langgraph_enabled={bool(image_metrics.get('langgraph_enabled', 0))}; "
+                    f"nutrition_generated={bool(nutrition_baseline)}"
+                ),
             })
         except RuntimeError as exc:
             error_text = str(exc)
             category = _error_category(error_text)
+            error_context = getattr(exc, "context", {}) if hasattr(exc, "context") else {}
+            nutrition_baseline = dict(error_context.get("nutrition_baseline", {})) if isinstance(error_context, dict) else {}
+            nutrition_path = _write_nutrition_artifact(output_dir, date_iso, nutrition_baseline)
+            if nutrition_path:
+                print(f"[nutrition] Wrote baseline → {nutrition_path}")
             print(f"[error] {date_iso}: {error_text}", file=sys.stderr)
             metadata.update({
                 "status": "error",
@@ -607,7 +650,33 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                 "validation_error": error_text if category == "quality_failed" else None,
                 "error_category": category,
                 "error_message": error_text,
+                "diagnostics_summary": f"gemini_error; category={category}",
             })
+            if isinstance(error_context, dict):
+                metadata.update({
+                    "langgraph_enabled": (
+                        bool(error_context.get("langgraph_enabled"))
+                        if error_context.get("langgraph_enabled") is not None
+                        else metadata.get("langgraph_enabled")
+                    ),
+                    "langgraph_retry_count": error_context.get("langgraph_retry_count"),
+                    "langgraph_similarity_score": error_context.get("langgraph_similarity_score"),
+                    "langgraph_validation_passed": (
+                        bool(error_context.get("langgraph_validation_passed"))
+                        if error_context.get("langgraph_validation_passed") is not None
+                        else None
+                    ),
+                    "langgraph_feedback": error_context.get("langgraph_feedback"),
+                    "langgraph_trace_path": error_context.get("langgraph_trace_path"),
+                    "nutrition_generated": (
+                        bool(error_context.get("nutrition_generated"))
+                        if error_context.get("nutrition_generated") is not None
+                        else bool(nutrition_baseline)
+                    ),
+                    "nutrition_status": error_context.get("nutrition_status") or ("success" if nutrition_baseline else "failed"),
+                    "nutrition_error": error_context.get("nutrition_feedback") or None,
+                    "nutrition_path": str(nutrition_path) if nutrition_path else None,
+                })
 
             if category == "quota_exhausted":
                 print(
@@ -634,6 +703,11 @@ def _process_date(target_date: date, args: argparse.Namespace, all_records: list
                         "prompt_sha256": _prompt_sha256(fallback_prompt),
                         "validation_passed": False if category == "quality_failed" else None,
                         "validation_error": error_text if category == "quality_failed" else None,
+                        "diagnostics_summary": (
+                            f"fallback_{args.fallback}; category={category}; "
+                            f"langgraph_enabled={metadata.get('langgraph_enabled')}; "
+                            f"nutrition_generated={metadata.get('nutrition_generated')}"
+                        ),
                     })
                     _write_metadata(meta_path, metadata)
                     return 0, f"{fallback_outcome}-{category}"

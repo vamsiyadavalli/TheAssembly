@@ -158,6 +158,58 @@ class NutritionBaselineTests(unittest.TestCase):
         self.assertEqual("success", result["nutrition_generation_status"])
         self.assertEqual(2, len(recipes))
 
+    def test_nutrition_node_recovers_after_initial_json_failure(self) -> None:
+        state = self._base_state()
+        recovered_payload = {
+            "training_day_type": "high_intensity",
+            "calorie_guidance": 2700,
+            "protein_target_g": 175,
+            "carbs_target_g": 300,
+            "fat_target_g": 80,
+            "pre_workout_fuel": "Toast and fruit.",
+            "post_workout_fuel": "Rice bowl with protein.",
+            "hydration_ml": 3400,
+            "electrolytes_mg_sodium": 1100,
+            "meal_timing_strategy": "Carbs around training windows.",
+            "rationale": "Recovery path payload.",
+            "disclaimer": "Consult a registered dietitian for personalized advice.",
+            "recipe_ideas": [
+                {"title": "Placeholder 1", "fit_reason": "x", "source_link": "https://example.com/1", "category": "cook_at_home"},
+                {"title": "Placeholder 2", "fit_reason": "y", "source_link": "https://example.com/2", "category": "quick_order_salad_bar"},
+            ],
+            "confidence": 0.7,
+        }
+
+        with patch(
+            "theassembly.langgraph_pipeline.nodes.call_text_agent",
+            side_effect=[
+                TextAgentError("text agent returned non-JSON output"),
+                TextAgentResult(payload=recovered_payload, model="models/gemini-2.5-flash", usage={"total_token_count": 99}),
+            ],
+        ):
+            result = nutrition_baseline_node(state)
+
+        self.assertEqual("recovered", result["nutrition_generation_status"])
+        self.assertTrue(result["nutrition_baseline"])
+        self.assertEqual(2, len(result["nutrition_baseline"]["recipe_ideas"]))
+
+    def test_nutrition_node_uses_deterministic_fallback_when_llm_unparseable(self) -> None:
+        state = self._base_state()
+        with patch(
+            "theassembly.langgraph_pipeline.nodes.call_text_agent",
+            side_effect=[
+                TextAgentError("bad json 1"),
+                TextAgentError("bad json 2"),
+            ],
+        ):
+            result = nutrition_baseline_node(state)
+
+        baseline = result["nutrition_baseline"]
+        self.assertEqual("fallback", result["nutrition_generation_status"])
+        self.assertTrue(baseline)
+        self.assertEqual("high_intensity", baseline["training_day_type"])
+        self.assertEqual(2, len(baseline["recipe_ideas"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -338,7 +338,7 @@ class RunGeminiModeTests(unittest.TestCase):
                 with patch("theassembly.workout_image.build_image_prompt", return_value=valid_prompt):
                     with patch("theassembly.workout_image.generate_gemini_image") as mock_generate:
                         with patch("theassembly.langgraph_pipeline.run_poster_pipeline", return_value=pipeline_result) as mock_pipeline:
-                            prompt, model, aspect_ratio, image_metrics = mod._run_gemini_mode(workout, output_path)
+                            prompt, model, aspect_ratio, image_metrics, nutrition_baseline = mod._run_gemini_mode(workout, output_path)
 
             self.assertEqual(prompt, valid_prompt)
             self.assertEqual(model, "gemini-2.5-flash-image")
@@ -349,6 +349,7 @@ class RunGeminiModeTests(unittest.TestCase):
             self.assertEqual(image_metrics["langgraph_validation_passed"], 1)
             self.assertEqual(image_metrics["langgraph_feedback"], "ok")
             self.assertTrue(image_metrics["langgraph_trace_path"].endswith(".trace.json"))
+            self.assertEqual(nutrition_baseline, {})
             mock_generate.assert_not_called()
             self.assertTrue(mock_pipeline.called)
 
@@ -458,7 +459,7 @@ class RunGeminiModeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.dict("os.environ", {}, clear=False):
+            with patch.dict("os.environ", {"LANGGRAPH_ENABLED": "false"}, clear=False):
                 import os
                 os.environ.pop("GEMINI_API_KEY", None)
                 os.environ.pop("GOOGLE_API_KEY", None)
@@ -496,7 +497,14 @@ class RunGeminiModeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.dict("os.environ", {"GEMINI_API_KEY": "AIzaSyENVKEYEXAMPLE1234567890"}, clear=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_API_KEY": "AIzaSyENVKEYEXAMPLE1234567890",
+                    "LANGGRAPH_ENABLED": "false",
+                },
+                clear=False,
+            ):
                 with patch.object(mod, "_REPO_ROOT", repo_root):
                     with patch("theassembly.workout_image.generate_gemini_image") as mock_generate:
                         mock_generate.return_value = None
@@ -586,7 +594,13 @@ class RunGeminiModeTests(unittest.TestCase):
                         message="429 RESOURCE_EXHAUSTED",
                     )
                 )
-                with patch.dict("os.environ", {"GEMINI_API_KEY": "AIzaSyFAKEKEYEXAMPLE1234567890"}):
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "GEMINI_API_KEY": "AIzaSyFAKEKEYEXAMPLE1234567890",
+                        "LANGGRAPH_ENABLED": "false",
+                    },
+                ):
                     with self.assertRaises(RuntimeError) as ctx:
                         mod._run_gemini_mode(workout, output_path)
 
@@ -775,6 +789,7 @@ class RunGeminiModeTests(unittest.TestCase):
                         "image_height": 1,
                         "langgraph_enabled": 0,
                     },
+                    {},
                 ),
             ):
                 code, outcome = mod._process_date(workout.workout_date, args, [workout])
@@ -792,6 +807,67 @@ class RunGeminiModeTests(unittest.TestCase):
             self.assertEqual(meta["prompt_path"], str(prompt_path))
             self.assertEqual(meta["prompt_length"], len(prompt_text))
             self.assertTrue(meta["prompt_sha256"])
+
+    def test_process_date_quality_fallback_preserves_langgraph_and_nutrition_metadata(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            if "tools.generate_workout_image" in sys.modules:
+                del sys.modules["tools.generate_workout_image"]
+
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "generate_workout_image",
+                Path(__file__).parent.parent / "tools" / "generate_workout_image.py",
+            )
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+            workout = _make_workout()
+            args = type(
+                "Args",
+                (),
+                {
+                    "output_dir": tmpdir,
+                    "mode": "gemini",
+                    "fallback": "prompt",
+                    "overwrite": False,
+                },
+            )()
+
+            context = {
+                "langgraph_enabled": 1,
+                "langgraph_retry_count": 2,
+                "langgraph_similarity_score": 0.8,
+                "langgraph_validation_passed": 0,
+                "langgraph_feedback": "validation mismatches: ['10 burpees']",
+                "langgraph_trace_path": "trace.json",
+                "nutrition_generated": True,
+                "nutrition_status": "success",
+                "nutrition_feedback": "",
+                "nutrition_baseline": {"calorie_guidance": 2500},
+            }
+
+            with patch.object(
+                mod,
+                "_run_gemini_mode",
+                side_effect=mod.LangGraphQualityError("[quality_failed] mismatch", context=context),
+            ):
+                code, outcome = mod._process_date(workout.workout_date, args, [workout])
+
+            self.assertEqual(code, 0)
+            self.assertEqual(outcome, "fallback-prompt-quality_failed")
+
+            date_iso = workout.workout_date.isoformat()
+            meta = json.loads((Path(tmpdir) / f"{date_iso}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["status"], "success")
+            self.assertEqual(meta["effective_mode"], "prompt")
+            self.assertEqual(meta["langgraph_enabled"], True)
+            self.assertEqual(meta["langgraph_retry_count"], 2)
+            self.assertEqual(meta["langgraph_validation_passed"], False)
+            self.assertEqual(meta["nutrition_generated"], True)
+            self.assertEqual(meta["nutrition_status"], "success")
+            self.assertTrue(meta["nutrition_path"].endswith(f"nutrition-baselines/{date_iso}.json"))
+            self.assertTrue((Path(tmpdir) / "nutrition-baselines" / f"{date_iso}.json").exists())
 
     def test_process_date_writes_skipped_metadata_when_output_exists(self) -> None:
         import tempfile
