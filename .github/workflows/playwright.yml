@@ -1,0 +1,148 @@
+name: E2E (Playwright)
+
+on:
+  schedule:
+    # Nightly at 06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  e2e-open:
+    name: Athlete view — gym open
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm install
+
+      - name: Copy open-state fixture
+        run: |
+          cp tests/e2e/fixtures/current_state_open.json /tmp/current_state.json
+          cp tests/e2e/fixtures/workouts.json /tmp/workouts.json
+
+      - name: Start Streamlit
+        env:
+          WORKOUTS_FILE_PATH: /tmp/workouts.json
+          CURRENT_STATE_FILE_PATH: /tmp/current_state.json
+          # Disable external API calls so tests are fully deterministic
+          GITHUB_TOKEN: ""
+          WORKOUTS_REPO_OWNER: ""
+          WORKOUTS_REPO_NAME: ""
+          LANGGRAPH_ENABLED: "false"
+        run: |
+          streamlit run streamlit_app.py \
+            --server.port 8501 \
+            --server.headless true \
+            --server.enableCORS false \
+            --browser.gatherUsageStats false &
+          # Wait for Streamlit to be ready
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8501/_stcore/health && break
+            sleep 2
+          done
+
+      - name: Run open-state E2E via MCP
+        working-directory: tests/e2e
+        env:
+          E2E_BASE_URL: http://localhost:8501
+          GYM_STATE: open
+          MCP_SERVER_COMMAND: docker
+          MCP_SERVER_ARGS_JSON: '["run","-i","--rm","--pull=always","mcr.microsoft.com/playwright/mcp","/app/cli.js","--headless","--browser","chromium","--no-sandbox"]'
+        run: npm run test:open
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-e2e-open-artifacts
+          path: tests/e2e/mcp-artifacts/
+          retention-days: 7
+
+  e2e-closed:
+    name: Athlete view — gym closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm install
+
+      - name: Copy closed-state fixture
+        run: |
+          cp tests/e2e/fixtures/current_state_closed.json /tmp/current_state.json
+          cp tests/e2e/fixtures/workouts.json /tmp/workouts.json
+
+      - name: Start Streamlit
+        env:
+          WORKOUTS_FILE_PATH: /tmp/workouts.json
+          CURRENT_STATE_FILE_PATH: /tmp/current_state.json
+          GITHUB_TOKEN: ""
+          WORKOUTS_REPO_OWNER: ""
+          WORKOUTS_REPO_NAME: ""
+          LANGGRAPH_ENABLED: "false"
+        run: |
+          streamlit run streamlit_app.py \
+            --server.port 8501 \
+            --server.headless true \
+            --server.enableCORS false \
+            --browser.gatherUsageStats false &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8501/_stcore/health && break
+            sleep 2
+          done
+
+      - name: Run closed-state E2E via MCP
+        working-directory: tests/e2e
+        env:
+          E2E_BASE_URL: http://localhost:8501
+          GYM_STATE: closed
+          MCP_SERVER_COMMAND: docker
+          MCP_SERVER_ARGS_JSON: '["run","-i","--rm","--pull=always","mcr.microsoft.com/playwright/mcp","/app/cli.js","--headless","--browser","chromium","--no-sandbox"]'
+        run: npm run test:closed
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-e2e-closed-artifacts
+          path: tests/e2e/mcp-artifacts/
+          retention-days: 7
