@@ -1,0 +1,41 @@
+graph TD
+    A["raw_wod<br/>(JSON from workouts.json)"] --> B["reasoning_node<br/>LLM: Gemini-2.5-flash<br/>Analyze WOD vibe<br/>Classify archetype<br/>Select layout strategy"]
+    
+    B --> C["editor_node<br/>Deterministic validation<br/>Schema validation<br/>Canonical row extraction<br/>Semantic contract freeze"]
+    
+    C --> D["nutrition_baseline_node<br/>LLM: Gemini-2.5-flash<br/>Non-blocking artifact<br/>Daily macro guidance<br/>Recipe rotation"]
+    
+    D --> E["designer_node<br/>LLM: Gemini-2.5-pro<br/>Visual composition<br/>Compliance checklist<br/>Panel allocation"]
+    
+    E --> F["critic_node<br/>LLM: Gemini-2.5-pro<br/>Fidelity audit<br/>Hallucination detection<br/>Quality scoring 0-100"]
+    
+    F --> G{Quality<br/>Gate}
+    
+    G -->|score < threshold| H["Critic Blocks<br/>final_graphic_prompt = ''"]
+    G -->|score ≥ threshold| I["generator_node<br/>Gemini Image API<br/>Text-to-image generation<br/>PNG output"]
+    
+    H --> J["🚫 Image generation blocked<br/>Fallback to Pillow poster"]
+    
+    I --> K["validation_node<br/>OCR extraction<br/>Token fuzzy matching<br/>Similarity scoring"]
+    
+    K --> L{Validation<br/>Result}
+    
+    L -->|similarity < threshold<br/>AND retry_count < max| M["feedback_to_reasoning<br/>OCR mismatches + retry directive"]
+    L -->|similarity ≥ threshold<br/>OR retry_count ≥ max| N["✅ Success<br/>image_path + trace JSON"]
+    
+    M --> B
+    
+    J --> O["output_path<br/>../TheAssemblyData/photos/ai/YYYY-MM-DD.png"]
+    N --> O
+    
+    style B fill:#e1f5ff
+    style D fill:#f3e5f5
+    style E fill:#fff3e0
+    style F fill:#fce4ec
+    style I fill:#c8e6c9
+    style K fill:#fce4ec
+    style O fill:#eeeeee
+    style H fill:#ffcdd2
+    style J fill:#ffcdd2
+    style G fill:#fff9c4
+    style L fill:#fff9c4

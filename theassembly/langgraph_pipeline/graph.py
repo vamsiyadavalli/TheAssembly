@@ -7,6 +7,7 @@ from typing import Any
 import uuid
 
 from .nodes import (
+    architect_node,
     critic_node,
     designer_node,
     editor_node,
@@ -31,7 +32,7 @@ def _write_trace_file(trace: dict[str, Any], output_path: Path) -> Path:
 
 
 def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
-    node_order = ["reasoning", "editor", "nutrition", "designer", "critic", "generator", "validator"]
+    node_order = ["reasoning", "editor", "architect", "nutrition", "designer", "critic", "generator", "validator"]
     node_traces = result.get("node_traces", {}) if isinstance(result.get("node_traces", {}), dict) else {}
     nodes = {name: node_traces.get(name, {}) for name in node_order if node_traces.get(name)}
     return {
@@ -52,6 +53,7 @@ def _build_trace_document(result: dict[str, Any]) -> dict[str, Any]:
             "critic_min_score": int(result.get("critic_min_score", 70)),
             "image_model": str(result.get("image_model", result.get("model", ""))),
             "reasoning_model": str(result.get("reasoning_model", "")),
+            "nutrition_model": str(result.get("nutrition_model", "")),
             "designer_model": str(result.get("designer_model", "")),
             "critic_model": str(result.get("critic_model", "")),
             "critic_enabled": bool(result.get("critic_enabled", True)),
@@ -78,6 +80,7 @@ def _compile_graph():
     workflow = StateGraph(PosterState)
     workflow.add_node("reasoning", reasoning_node)
     workflow.add_node("editor", editor_node)
+    workflow.add_node("architect", architect_node)
     workflow.add_node("nutrition", nutrition_baseline_node)
     workflow.add_node("designer", designer_node)
     workflow.add_node("critic", critic_node)
@@ -86,7 +89,8 @@ def _compile_graph():
 
     workflow.set_entry_point("reasoning")
     workflow.add_edge("reasoning", "editor")
-    workflow.add_edge("editor", "nutrition")
+    workflow.add_edge("editor", "architect")
+    workflow.add_edge("architect", "nutrition")
     workflow.add_edge("nutrition", "designer")
     workflow.add_edge("designer", "critic")
     workflow.add_edge("critic", "generator")
@@ -113,6 +117,7 @@ def run_poster_pipeline(
     model: str,
     aspect_ratio: str,
     reasoning_model: str = "models/gemini-2.5-flash",
+    nutrition_model: str = "",
     designer_model: str = "models/gemini-2.5-pro",
     critic_model: str = "models/gemini-2.5-pro",
     critic_enabled: bool = True,
@@ -144,6 +149,7 @@ def run_poster_pipeline(
         "model": model,
         "image_model": model,
         "reasoning_model": reasoning_model,
+        "nutrition_model": nutrition_model or reasoning_model,
         "designer_model": designer_model,
         "critic_model": critic_model,
         "critic_enabled": critic_enabled,

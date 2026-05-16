@@ -33,10 +33,14 @@ class PosterState(TypedDict, total=False):
     max_retries: int
     is_valid: bool
     error_log: list[str]
+    retry_history: list[dict[str, Any]]
+    retry_directives: list[dict[str, Any]]
+    last_validation_feedback: dict[str, Any]
 
     api_key: str
     image_model: str
     reasoning_model: str
+    nutrition_model: str
     designer_model: str
     critic_model: str
     critic_enabled: bool
@@ -66,7 +70,6 @@ class PosterState(TypedDict, total=False):
     node_traces: dict[str, dict[str, Any]]
     llm_models: dict[str, str]
     llm_usage: dict[str, dict[str, Any]]
-    retry_history: list[dict[str, Any]]
 
     # Nutrition baseline (derived artifact, workout-scoped, stateless)
     nutrition_baseline: dict[str, Any]

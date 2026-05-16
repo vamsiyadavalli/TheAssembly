@@ -127,6 +127,23 @@ class VerifyImageAccuracyTests(unittest.TestCase):
         self.assertLess(result["similarity_score"], 1.0)
         self.assertIn("4 pullup", result["mismatches"])
 
+    def test_long_movement_and_weight_numeric_variant_match(self) -> None:
+        expected = [
+            {"name": "Run", "reps": "400m", "rx_weight": ""},
+            {
+                "name": "Barbell Hang Power Snatch",
+                "reps": "Max Reps",
+                "rx_weight": "Men 75 lbs / Women 55 lbs",
+            },
+        ]
+
+        def fake_extractor(_: str) -> str:
+            return "400m run\nmax reps barbell hang power snatch\n75/55 lbs"
+
+        result = verify_image_accuracy("unused.jpg", expected, text_extractor=fake_extractor)
+        self.assertTrue(result["is_valid"])
+        self.assertEqual(result["mismatches"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
